@@ -5,7 +5,7 @@ SmartRail is a premium, PWA-certified smart card ticketing system for Sri Lanka 
 
 ## 🏗️ Technical Architecture
 - **Tech Stack:** React (Vite) + Node.js (ESM) + Tailwind CSS + Framer Motion.
-- **Persistence:** JSON File-based DB (`data.json`) for zero-loss server restarts.
+- **Persistence:** PostgreSQL (`DATABASE_URL` in `backend/.env`); balance changes and ledger entries are written atomically.
 - **PWA Ready:** Manifest and icons configured for "Home Screen" installation.
 - **Hardware Bridge:** Dedicated RFID Tap API ready for Arduino/NodeMCU integration.
 
