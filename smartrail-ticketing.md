@@ -6,6 +6,7 @@ SmartRail is a premium, PWA-certified smart card ticketing system for Sri Lanka 
 ## 🏗️ Technical Architecture
 - **Tech Stack:** React (Vite) + Node.js (ESM) + Tailwind CSS + Framer Motion.
 - **Persistence:** PostgreSQL (`DATABASE_URL` in `backend/.env`); balance changes and ledger entries are written atomically.
+- **Auth:** JWT (`JWT_SECRET` in `backend/.env`), bcrypt passwords, `Authorization: Bearer` on all API calls.
 - **PWA Ready:** Manifest and icons configured for "Home Screen" installation.
 - **Hardware Bridge:** Dedicated RFID Tap API ready for Arduino/NodeMCU integration.
 
@@ -13,7 +14,8 @@ SmartRail is a premium, PWA-certified smart card ticketing system for Sri Lanka 
 - [x] **Persistence:** Real-time saving of balances, users, and transaction logs.
 - [x] **Full 9-Line Network:** Includes all official SLR lines (Main, Coast, Northern, Kelani Valley, etc.) with precise KM markers.
 - [x] **Live Tracking Board:** Simulated movement and status updates for iconic trains like Udarata Menike and Yal Devi.
-- [x] **Admin Tooling:** Dynamic pricing updates, user management, and RFID simulation.
+- [x] **Admin Tooling:** Dynamic pricing updates, RFID simulation, and full user management (create, edit, deactivate, reset password, delete).
+- [x] **Secure Auth:** bcrypt-hashed passwords, JWT sessions with expiry and revocation, role-enforced API, login throttling.
 - [x] **Transaction Ledger:** Automated receipt generation for every top-up and tap.
 - [x] **UX Excellence:** 3D animated login, responsive layouts, and strict "Maestro" design (No-Purple).
 

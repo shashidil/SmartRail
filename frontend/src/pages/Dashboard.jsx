@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CreditCard, History, MapPin, Zap, LogOut, ArrowRight, TrainFront, CheckCircle2 } from 'lucide-react';
-import axios from 'axios';
+import { CreditCard, History, MapPin, Zap, LogOut, ArrowRight, TrainFront, CheckCircle2, KeyRound } from 'lucide-react';
+import { api, getStoredUser, setSession, clearSession } from '../api';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -11,14 +11,17 @@ const Dashboard = () => {
   const [topUpSuccess, setTopUpSuccess] = useState(false);
   const [history, setHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '' });
+  const [pwMessage, setPwMessage] = useState(null);
+  const [isSavingPw, setIsSavingPw] = useState(false);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser) {
+    const parsedUser = getStoredUser();
+    if (!parsedUser) {
       navigate('/login');
       return;
     }
-    const parsedUser = JSON.parse(storedUser);
     setUser(parsedUser);
     fetchHistory(parsedUser.id);
   }, [navigate]);
@@ -26,7 +29,7 @@ const Dashboard = () => {
   const fetchHistory = async (userId) => {
     setIsLoadingHistory(true);
     try {
-      const res = await axios.get(`http://localhost:5000/api/history/${userId}`);
+      const res = await api.get(`/api/history/${userId}`);
       if (res.data.success) {
         setHistory(res.data.history);
       }
@@ -38,24 +41,39 @@ const Dashboard = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    clearSession();
     navigate('/login');
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (isSavingPw) return;
+    setIsSavingPw(true);
+    setPwMessage(null);
+    try {
+      const res = await api.put('/api/me/password', pwForm);
+      if (res.data.success) {
+        setSession({ token: res.data.token });
+        setPwForm({ currentPassword: '', newPassword: '' });
+        setPwMessage({ type: 'success', text: 'Password updated.' });
+      }
+    } catch (err) {
+      setPwMessage({ type: 'error', text: err.response?.data?.message || 'Could not update password.' });
+    } finally {
+      setIsSavingPw(false);
+    }
   };
 
   const handleTopUp = async () => {
     if (isToppingUp) return;
     setIsToppingUp(true);
     try {
-      const response = await axios.post('http://localhost:5000/api/topup', {
-        userId: user.id,
-        amount: 500
-      });
+      const response = await api.post('/api/topup', { amount: 500 });
 
       if (response.data.success) {
         const updatedUser = { ...user, balance: response.data.balance };
         setUser(updatedUser);
-        localStorage.setItem('user', JSON.stringify(updatedUser)); 
+        setSession({ user: updatedUser });
         
         setTopUpSuccess(true);
         fetchHistory(user.id);
@@ -82,7 +100,14 @@ const Dashboard = () => {
           <span className="text-sm font-medium text-slate-500 hidden md:block">
             Passenger ID: SR-{user.id.toString().padStart(4, '0')}
           </span>
-          <button 
+          <button
+            onClick={() => { setShowPassword(true); setPwMessage(null); }}
+            className="text-slate-400 hover:text-rail-blue transition-colors flex items-center gap-2 text-sm font-medium"
+          >
+            <KeyRound size={16} />
+            <span className="hidden sm:block">Password</span>
+          </button>
+          <button
             onClick={handleLogout}
             className="text-slate-400 hover:text-rail-red transition-colors flex items-center gap-2 text-sm font-medium"
           >
@@ -91,6 +116,39 @@ const Dashboard = () => {
           </button>
         </div>
       </nav>
+
+      {showPassword && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/50 flex items-center justify-center p-4" onClick={() => setShowPassword(false)}>
+          <form
+            onSubmit={handleChangePassword}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-lg shadow-2xl border border-slate-200 w-full max-w-sm p-6 space-y-4"
+          >
+            <h2 className="text-lg font-bold outfit text-slate-900">Change Password</h2>
+            {pwMessage && (
+              <div className={`p-2 border-l-2 text-xs font-medium ${pwMessage.type === 'success' ? 'bg-green-50 border-green-500 text-green-700' : 'bg-red-50 border-red-500 text-red-600'}`}>
+                {pwMessage.text}
+              </div>
+            )}
+            <input
+              type="password" required autoComplete="current-password" placeholder="Current password"
+              className="input-field py-2.5 text-sm"
+              value={pwForm.currentPassword}
+              onChange={(e) => setPwForm({ ...pwForm, currentPassword: e.target.value })}
+            />
+            <input
+              type="password" required autoComplete="new-password" placeholder="New password (8+ chars, letter & number)"
+              className="input-field py-2.5 text-sm"
+              value={pwForm.newPassword}
+              onChange={(e) => setPwForm({ ...pwForm, newPassword: e.target.value })}
+            />
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => setShowPassword(false)} className="text-sm text-slate-500 hover:text-slate-900 font-medium px-3">Close</button>
+              <button type="submit" disabled={isSavingPw} className="btn-primary py-2 px-4 text-sm">{isSavingPw ? 'Saving...' : 'Update'}</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-8 lg:p-12">
         

@@ -4,15 +4,16 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import RoutesPage from './pages/Routes';
+import RequireAuth from './components/RequireAuth';
 
 function App() {
   return (
     <div className="min-h-screen bg-white">
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/routes" element={<RoutesPage />} />
+        <Route path="/dashboard" element={<RequireAuth role="user"><Dashboard /></RequireAuth>} />
+        <Route path="/admin" element={<RequireAuth role="admin"><AdminDashboard /></RequireAuth>} />
+        <Route path="/routes" element={<RequireAuth><RoutesPage /></RequireAuth>} />
         <Route path="/" element={<Navigate to="/login" replace />} />
       </Routes>
     </div>

@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ShieldCheck, Users, Activity, CreditCard, 
-  Map, Search, Bell, LogOut, ArrowUpRight, Zap, Edit3, CheckCircle2
+  Map, Search, Bell, LogOut, ArrowUpRight, Zap, Edit3, CheckCircle2,
+  UserPlus, KeyRound, Trash2, Ban, RotateCcw, X
 } from 'lucide-react';
-import axios from 'axios';
+import { api, getStoredUser, clearSession } from '../api';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -21,12 +22,11 @@ const AdminDashboard = () => {
   const [rfidStatus, setRfidStatus] = useState(null);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser) {
+    const parsedUser = getStoredUser();
+    if (!parsedUser) {
       navigate('/login');
       return;
     }
-    const parsedUser = JSON.parse(storedUser);
     if (parsedUser.role !== 'admin') {
       navigate('/dashboard');
       return;
@@ -38,7 +38,7 @@ const AdminDashboard = () => {
 
   const fetchUsers = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/users');
+      const res = await api.get('/api/users');
       if (res.data.success) {
         setPassengers(res.data.users);
       }
@@ -49,7 +49,7 @@ const AdminDashboard = () => {
 
   const fetchRoutes = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/routes');
+      const res = await api.get('/api/routes');
       if (res.data.success) {
         setRoutes(res.data.routes);
       }
@@ -60,7 +60,7 @@ const AdminDashboard = () => {
 
   const handleRouteUpdate = async (id, baseFare, perKm) => {
     try {
-      const res = await axios.put(`http://localhost:5000/api/routes/${id}`, { baseFare, perKm });
+      const res = await api.put(`/api/routes/${id}`, { baseFare, perKm });
       if (res.data.success) {
         fetchRoutes(); // Re-fetch to confirm update
         alert(`Route ${res.data.route.name} Pricing Updated!`);
@@ -74,7 +74,7 @@ const AdminDashboard = () => {
     e.preventDefault();
     setRfidStatus({ loading: true });
     try {
-      const res = await axios.post('http://localhost:5000/api/rfid/tap', {
+      const res = await api.post('/api/rfid/tap', {
         userId: rfidForm.userId,
         amount: Number(rfidForm.amount)
       });
@@ -87,9 +87,79 @@ const AdminDashboard = () => {
     }
   };
 
+  // --- User management ---
+  const [userSearch, setUserSearch] = useState('');
+  const [userModal, setUserModal] = useState(null); // { mode: 'create' | 'edit' | 'reset', user? }
+  const [userForm, setUserForm] = useState({ username: '', password: '', role: 'user', fullName: '', phone: '', nic: '', email: '' });
+  const [userModalError, setUserModalError] = useState('');
+  const [isSavingUser, setIsSavingUser] = useState(false);
+
+  const visibleUsers = passengers.filter((p) => {
+    const q = userSearch.trim().toLowerCase();
+    return [p.username, p.fullName, p.email, p.phone, p.nic].some((v) => (v || '').toLowerCase().includes(q));
+  });
+
+  const openUserModal = (mode, user = null) => {
+    setUserModal({ mode, user });
+    setUserForm({
+      username: user?.username || '',
+      password: '',
+      role: user?.role || 'user',
+      fullName: user?.fullName || '',
+      phone: user?.phone || '',
+      nic: user?.nic || '',
+      email: user?.email || '',
+    });
+    setUserModalError('');
+  };
+
+  const handleUserSubmit = async (e) => {
+    e.preventDefault();
+    if (isSavingUser) return;
+    setIsSavingUser(true);
+    setUserModalError('');
+    try {
+      const { mode, user } = userModal;
+      if (mode === 'create') {
+        await api.post('/api/users', userForm);
+      } else if (mode === 'edit') {
+        const { password: _unused, ...details } = userForm;
+        await api.put(`/api/users/${user.id}`, details);
+      } else {
+        await api.post(`/api/users/${user.id}/reset-password`, { newPassword: userForm.password });
+      }
+      setUserModal(null);
+      fetchUsers();
+    } catch (err) {
+      setUserModalError(err.response?.data?.message || 'Request failed.');
+    } finally {
+      setIsSavingUser(false);
+    }
+  };
+
+  const handleUserStatus = async (user, status) => {
+    const verb = status === 'deactivated' ? 'Deactivate' : 'Reactivate';
+    if (!window.confirm(`${verb} ${user.username}?`)) return;
+    try {
+      await api.put(`/api/users/${user.id}/status`, { status });
+      fetchUsers();
+    } catch (err) {
+      alert(err.response?.data?.message || `Failed to ${verb.toLowerCase()} user.`);
+    }
+  };
+
+  const handleUserDelete = async (user) => {
+    if (!window.confirm(`Delete ${user.username}? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/api/users/${user.id}`);
+      fetchUsers();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to delete user.');
+    }
+  };
+
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    clearSession();
     navigate('/login');
   };
 
@@ -127,6 +197,80 @@ const AdminDashboard = () => {
         </div>
       </aside>
 
+      {userModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4" onClick={() => setUserModal(null)}>
+          <form
+            onSubmit={handleUserSubmit}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-lg shadow-2xl border border-slate-200 w-full max-w-sm p-6 space-y-4"
+          >
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-bold outfit text-slate-900">
+                {userModal.mode === 'create' && 'Add User'}
+                {userModal.mode === 'edit' && `Edit ${userModal.user.username}`}
+                {userModal.mode === 'reset' && `Reset password for ${userModal.user.username}`}
+              </h2>
+              <button type="button" onClick={() => setUserModal(null)} className="text-slate-400 hover:text-slate-900"><X size={18} /></button>
+            </div>
+            {userModalError && (
+              <div className="p-2 bg-red-50 border-l-2 border-red-500 text-red-600 text-xs font-medium">{userModalError}</div>
+            )}
+            {userModal.mode !== 'reset' && (
+              <input
+                type="text" required placeholder="Username" className="input-field py-2.5 text-sm"
+                value={userForm.username}
+                onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
+              />
+            )}
+            {userModal.mode !== 'reset' && (
+              <>
+                <input
+                  type="text" placeholder="Full name" className="input-field py-2.5 text-sm"
+                  value={userForm.fullName}
+                  onChange={(e) => setUserForm({ ...userForm, fullName: e.target.value })}
+                />
+                <input
+                  type="tel" placeholder="Phone (e.g. 0771234567)" className="input-field py-2.5 text-sm"
+                  value={userForm.phone}
+                  onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
+                />
+                <input
+                  type="text" placeholder="NIC" className="input-field py-2.5 text-sm"
+                  value={userForm.nic}
+                  onChange={(e) => setUserForm({ ...userForm, nic: e.target.value })}
+                />
+                <input
+                  type="email" placeholder="Email" className="input-field py-2.5 text-sm"
+                  value={userForm.email}
+                  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                />
+              </>
+            )}
+            {userModal.mode !== 'edit' && (
+              <input
+                type="password" required autoComplete="new-password"
+                placeholder="Password (8+ chars, letter & number)" className="input-field py-2.5 text-sm"
+                value={userForm.password}
+                onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+              />
+            )}
+            {userModal.mode !== 'reset' && (
+              <select
+                className="input-field py-2.5 text-sm" value={userForm.role}
+                onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+              >
+                <option value="user">Passenger</option>
+                <option value="admin">Admin</option>
+              </select>
+            )}
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => setUserModal(null)} className="text-sm text-slate-500 hover:text-slate-900 font-medium px-3">Cancel</button>
+              <button type="submit" disabled={isSavingUser} className="btn-primary py-2 px-4 text-sm">{isSavingUser ? 'Saving...' : 'Save'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Main Content Area */}
       <main className="flex-1 md:ml-64 flex flex-col min-h-screen relative">
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-0">
@@ -158,7 +302,7 @@ const AdminDashboard = () => {
                       <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-sm">+12%</span>
                     </div>
                     <div>
-                      <h3 className="text-3xl font-bold outfit tracking-tight">{passengers.length || '...'}</h3>
+                      <h3 className="text-3xl font-bold outfit tracking-tight">{passengers.filter((p) => p.role === 'user').length || '...'}</h3>
                       <p className="text-sm text-slate-500 font-medium uppercase tracking-wider mt-1">Total Passengers</p>
                     </div>
                   </div>
@@ -185,33 +329,74 @@ const AdminDashboard = () => {
             {/* USERS TAB */}
             {activeTab === 'users' && (
               <motion.div key="users" initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-10 }} className="space-y-6">
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center gap-4 flex-wrap">
                   <div>
-                    <h1 className="text-2xl font-bold outfit">Manage Passengers</h1>
-                    <p className="text-slate-500 text-sm mt-1">View registered cards and current balances.</p>
+                    <h1 className="text-2xl font-bold outfit">Manage Users</h1>
+                    <p className="text-slate-500 text-sm mt-1">Create, edit, deactivate and reset accounts.</p>
                   </div>
-                  <button onClick={fetchUsers} className="btn-primary py-2 px-4 text-xs flex items-center gap-2">Refresh Data</button>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="text" placeholder="Search name, username, NIC..." value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                      className="px-3 py-2 bg-white border border-slate-200 rounded-sm text-sm focus:outline-none focus:border-rail-blue"
+                    />
+                    <button onClick={fetchUsers} className="btn-primary py-2 px-4 text-xs flex items-center gap-2">Refresh Data</button>
+                    <button onClick={() => openUserModal('create')} className="btn-primary py-2 px-4 text-xs flex items-center gap-2">
+                      <UserPlus size={14} /> Add User
+                    </button>
+                  </div>
                 </div>
-                
-                <div className="glass-card p-0 overflow-hidden">
+
+                <div className="glass-card p-0 overflow-x-auto">
                   <table className="w-full text-left text-sm whitespace-nowrap">
                     <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold">
                       <tr>
-                        <th className="px-6 py-4 border-b border-slate-100">Passenger ID</th>
+                        <th className="px-6 py-4 border-b border-slate-100">ID</th>
                         <th className="px-6 py-4 border-b border-slate-100">Username</th>
+                        <th className="px-6 py-4 border-b border-slate-100">Contact</th>
+                        <th className="px-6 py-4 border-b border-slate-100">Role</th>
                         <th className="px-6 py-4 border-b border-slate-100 text-right">Card Balance</th>
                         <th className="px-6 py-4 border-b border-slate-100 text-center">Status</th>
+                        <th className="px-6 py-4 border-b border-slate-100">Created</th>
+                        <th className="px-6 py-4 border-b border-slate-100 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                      {passengers.length === 0 ? (
-                        <tr><td colSpan="4" className="text-center py-8 text-slate-400">No passengers found.</td></tr>
-                      ) : passengers.map(p => (
+                      {visibleUsers.length === 0 ? (
+                        <tr><td colSpan="8" className="text-center py-8 text-slate-400">No users found.</td></tr>
+                      ) : visibleUsers.map(p => (
                         <tr key={p.id} className="hover:bg-slate-50/50">
                           <td className="px-6 py-4 font-mono text-xs text-slate-400">SR-{p.id.toString().padStart(4, '0')}</td>
-                          <td className="px-6 py-4 font-semibold">{p.username}</td>
+                          <td className="px-6 py-4">
+                            <div className="font-semibold">{p.username}</div>
+                            {p.fullName && <div className="text-xs text-slate-400">{p.fullName}</div>}
+                          </td>
+                          <td className="px-6 py-4 text-xs text-slate-500">
+                            <div>{p.email || '-'}</div>
+                            <div className="text-slate-400">{[p.phone, p.nic].filter(Boolean).join(' · ')}</div>
+                          </td>
+                          <td className="px-6 py-4 text-xs uppercase tracking-widest text-slate-500">{p.role === 'admin' ? 'Admin' : 'Passenger'}</td>
                           <td className="px-6 py-4 font-bold font-mono text-right text-rail-blue">Rs. {p.balance}</td>
-                          <td className="px-6 py-4 text-center"><span className="bg-green-50 text-green-600 px-2 py-1 rounded-sm text-[10px] uppercase font-bold tracking-widest">Active</span></td>
+                          <td className="px-6 py-4 text-center">
+                            {p.status === 'active' ? (
+                              <span className="bg-green-50 text-green-600 px-2 py-1 rounded-sm text-[10px] uppercase font-bold tracking-widest">Active</span>
+                            ) : (
+                              <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded-sm text-[10px] uppercase font-bold tracking-widest">Deactivated</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-xs text-slate-500">{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ''}</td>
+                          <td className="px-6 py-4">
+                            <div className="flex justify-end gap-3 text-slate-400">
+                              <button title="Edit" onClick={() => openUserModal('edit', p)} className="hover:text-rail-blue"><Edit3 size={16} /></button>
+                              <button title="Reset password" onClick={() => openUserModal('reset', p)} className="hover:text-rail-blue"><KeyRound size={16} /></button>
+                              {p.status === 'active' ? (
+                                <button title="Deactivate" onClick={() => handleUserStatus(p, 'deactivated')} className="hover:text-rail-red"><Ban size={16} /></button>
+                              ) : (
+                                <button title="Reactivate" onClick={() => handleUserStatus(p, 'active')} className="hover:text-green-600"><RotateCcw size={16} /></button>
+                              )}
+                              <button title="Delete" onClick={() => handleUserDelete(p)} className="hover:text-rail-red"><Trash2 size={16} /></button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
