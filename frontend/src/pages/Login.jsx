@@ -2,21 +2,23 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Train, Shield, User, ArrowRight, Loader2, ArrowLeft } from 'lucide-react';
-import axios from 'axios';
+import { api, setSession, clearSession, takeAuthMessage } from '../api';
 
 const Login = () => {
   const navigate = useNavigate();
   const [isFlipped, setIsFlipped] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => takeAuthMessage());
   const [credentials, setCredentials] = useState({ username: '', password: '' });
+  const [profile, setProfile] = useState({ fullName: '', phone: '', nic: '', email: '' });
 
   const handleFlip = () => {
     setIsFlipped(!isFlipped);
     setError('');
     setIsRegistering(false);
     setCredentials({ username: '', password: '' });
+    setProfile({ fullName: '', phone: '', nic: '', email: '' });
   };
 
   const handleSubmit = async (e, role) => {
@@ -25,22 +27,24 @@ const Login = () => {
     setError('');
 
     try {
+      // Only the Passenger face registers; the Administrator face always logs in.
       const endpoint = isRegistering && role === 'user' ? '/api/register' : '/api/login';
-      const response = await axios.post(`http://localhost:5000${endpoint}`, {
+      const registering = endpoint === '/api/register';
+      const response = await api.post(endpoint, {
         username: credentials.username,
         password: credentials.password,
+        ...(registering ? profile : {}),
       });
 
       if (response.data.success) {
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-        
-        if (response.data.user.role === 'admin' && role === 'admin') {
-          navigate('/admin');
-        } else if (response.data.user.role === 'user' && role === 'user') {
-          navigate('/dashboard');
-        } else {
+        const { user, token } = response.data;
+        if (user.role !== role) {
+          // Valid account, wrong login face: don't keep the session.
+          clearSession();
           setError(`Account found, but lacks ${role} privileges.`);
+        } else {
+          setSession({ token, user });
+          navigate(role === 'admin' ? '/admin' : '/dashboard');
         }
       }
     } catch (err) {
@@ -69,7 +73,7 @@ const Login = () => {
             className="absolute inset-0 w-full h-full bg-white shadow-2xl border border-slate-200 rounded-lg flex flex-col pt-8 pb-6 px-8"
             style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
           >
-            <div className="flex-1 flex flex-col justify-center">
+            <div className="flex-1 flex flex-col justify-center overflow-y-auto">
               <div className="flex items-center gap-2 mb-6 text-rail-blue mx-auto">
                 <Train className="w-8 h-8" />
                 <h1 className="text-xl font-bold outfit tracking-tight text-slate-900">SmartRail</h1>
@@ -92,6 +96,38 @@ const Login = () => {
               )}
 
               <form onSubmit={(e) => handleSubmit(e, 'user')} className="space-y-4">
+                {isRegistering && (
+                  <>
+                    <input
+                      type="text" autoComplete="name" placeholder="Full Name"
+                      className="input-field py-2.5 text-sm"
+                      required disabled={isLoading}
+                      value={profile.fullName}
+                      onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
+                    />
+                    <input
+                      type="tel" autoComplete="tel" placeholder="Phone Number (e.g. 0771234567)"
+                      className="input-field py-2.5 text-sm"
+                      required disabled={isLoading}
+                      value={profile.phone}
+                      onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                    />
+                    <input
+                      type="text" placeholder="NIC Number"
+                      className="input-field py-2.5 text-sm"
+                      required disabled={isLoading}
+                      value={profile.nic}
+                      onChange={(e) => setProfile({ ...profile, nic: e.target.value })}
+                    />
+                    <input
+                      type="email" autoComplete="email" placeholder="Email Address"
+                      className="input-field py-2.5 text-sm"
+                      required disabled={isLoading}
+                      value={profile.email}
+                      onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                    />
+                  </>
+                )}
                 <input 
                   type="text" 
                   placeholder={isRegistering ? "Choose a Username" : "Username (e.g. nirmal)"}
@@ -102,7 +138,7 @@ const Login = () => {
                 />
                 <input 
                   type="password" 
-                  placeholder={isRegistering ? "Create Password" : "Password"}
+                  placeholder={isRegistering ? "Create Password (8+ chars, letter & number)" : "Password"}
                   className="input-field py-2.5 text-sm"
                   required disabled={isLoading}
                   onChange={(e) => setCredentials({...credentials, password: e.target.value})}

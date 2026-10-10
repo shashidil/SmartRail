@@ -3,6 +3,19 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { query, withTransaction } from './db/index.js';
 import { initDatabase } from './db/init.js';
+import { requireAuth, requireRole, signToken, publicUser } from './middleware/auth.js';
+import usersRouter from './routes/users.js';
+import {
+  hashPassword,
+  verifyPassword,
+  normalizeUsername,
+  validatePassword,
+  validateUsername,
+  PASSWORD_RULE,
+  USERNAME_RULE,
+} from './lib/passwords.js';
+import { parseProfile, conflictMessage } from './lib/profile.js';
+import { blockedFor, recordFailure, clearFailures } from './lib/loginThrottle.js';
 
 dotenv.config();
 
@@ -30,49 +43,102 @@ app.get('/', (req, res) => {
 });
 
 app.post('/api/register', asyncHandler(async (req, res) => {
-  const { username, password } = req.body;
+  const username = normalizeUsername(req.body.username);
+  const { password } = req.body;
 
-  const { rows } = await query(
-    `INSERT INTO users (username, password, role, balance)
-     VALUES ($1, $2, 'user', 0)
-     ON CONFLICT (username) DO NOTHING
-     RETURNING id, username, role`,
-    [username, password]
-  );
-
-  if (rows.length === 0) {
-    return res.status(400).json({ success: false, message: 'Passenger ID already registered' });
+  if (!validateUsername(username)) {
+    return res.status(400).json({ success: false, message: USERNAME_RULE });
+  }
+  if (!validatePassword(password)) {
+    return res.status(400).json({ success: false, message: PASSWORD_RULE });
   }
 
-  const newUser = rows[0];
-  res.json({
-    success: true,
-    user: { id: newUser.id, username: newUser.username, role: newUser.role, balance: 0 },
-    token: 'jwt-' + Math.random().toString(36).substring(7)
-  });
+  const profile = parseProfile(req.body, { required: true });
+  if (profile.error) {
+    return res.status(400).json({ success: false, message: profile.error });
+  }
+  const { fullName, phone, nic, email } = profile.values;
+
+  let rows;
+  try {
+    ({ rows } = await query(
+      `INSERT INTO users (username, password_hash, role, balance, full_name, phone, nic, email)
+       VALUES ($1, $2, 'user', 0, $3, $4, $5, $6)
+       RETURNING id, username, role, balance, status, token_version, full_name, phone, nic, email`,
+      [username, await hashPassword(password), fullName, phone, nic, email]
+    ));
+  } catch (err) {
+    const message = conflictMessage(err);
+    if (message) return res.status(409).json({ success: false, message });
+    throw err;
+  }
+
+  res.json({ success: true, user: publicUser(rows[0]), token: signToken(rows[0]) });
 }));
 
 app.post('/api/login', asyncHandler(async (req, res) => {
-  const { username, password } = req.body;
-  const { rows } = await query(
-    'SELECT id, username, role, balance FROM users WHERE username = $1 AND password = $2',
-    [username, password]
-  );
+  const username = normalizeUsername(req.body.username);
+  const password = req.body.password;
 
-  if (rows.length > 0) {
-    const user = rows[0];
-    res.json({
-      success: true,
-      user: { id: user.id, username: user.username, role: user.role, balance: user.balance || 0 },
-      token: 'jwt-' + Date.now()
+  const wait = blockedFor(username);
+  if (wait > 0) {
+    const seconds = Math.ceil(wait / 1000);
+    res.set('Retry-After', String(seconds));
+    return res.status(429).json({
+      success: false,
+      message: `Too many attempts. Try again in ${Math.ceil(seconds / 60)} minute(s).`,
     });
-  } else {
-    res.status(401).json({ success: false, message: 'Invalid credentials' });
   }
+
+  const { rows } = await query(
+    `SELECT id, username, role, balance, status, token_version, password_hash, full_name, phone, nic, email
+     FROM users WHERE username = $1`,
+    [username]
+  );
+  const user = rows[0];
+  // Always runs one bcrypt comparison, even for unknown users, so timing is uniform.
+  const passwordOk = await verifyPassword(password, user?.password_hash);
+
+  if (!user || !passwordOk || user.status !== 'active') {
+    recordFailure(username);
+    return res.status(401).json({ success: false, message: 'Invalid username or password' });
+  }
+
+  clearFailures(username);
+  res.json({ success: true, user: publicUser(user), token: signToken(user) });
 }));
 
-app.get('/api/history/:userId', asyncHandler(async (req, res) => {
+app.get('/api/me', requireAuth, (req, res) => {
+  res.json({ success: true, user: publicUser(req.user) });
+});
+
+app.put('/api/me/password', requireAuth, asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  const { rows } = await query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
+  if (!(await verifyPassword(currentPassword, rows[0]?.password_hash))) {
+    return res.status(403).json({ success: false, message: 'Current password is incorrect' });
+  }
+  if (!validatePassword(newPassword)) {
+    return res.status(400).json({ success: false, message: PASSWORD_RULE });
+  }
+  if (newPassword === currentPassword) {
+    return res.status(400).json({ success: false, message: 'New password must be different' });
+  }
+
+  const updated = await query(
+    `UPDATE users SET password_hash = $2, token_version = token_version + 1, updated_at = now()
+     WHERE id = $1 RETURNING id, role, token_version`,
+    [req.user.id, await hashPassword(newPassword)]
+  );
+  res.json({ success: true, token: signToken(updated.rows[0]) });
+}));
+
+app.get('/api/history/:userId', requireAuth, asyncHandler(async (req, res) => {
   const userId = parseInt(req.params.userId, 10);
+  if (req.user.role !== 'admin' && userId !== req.user.id) {
+    return res.status(403).json({ success: false, message: 'Not permitted' });
+  }
   if (Number.isNaN(userId)) return res.json({ success: true, history: [] });
 
   const { rows } = await query(
@@ -85,17 +151,14 @@ app.get('/api/history/:userId', asyncHandler(async (req, res) => {
   res.json({ success: true, history });
 }));
 
-app.get('/api/users', asyncHandler(async (req, res) => {
-  const { rows } = await query("SELECT id, username, role, balance FROM users WHERE role = 'user' ORDER BY id");
-  res.json({ success: true, users: rows });
-}));
+app.use('/api/users', usersRouter);
 
-app.get('/api/routes', asyncHandler(async (req, res) => {
+app.get('/api/routes', requireAuth, asyncHandler(async (req, res) => {
   const { rows } = await query(`SELECT ${ROUTE_COLUMNS} FROM routes ORDER BY id`);
   res.json({ success: true, routes: rows });
 }));
 
-app.put('/api/routes/:id', asyncHandler(async (req, res) => {
+app.put('/api/routes/:id', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const { baseFare, perKm } = req.body;
   const id = parseInt(req.params.id, 10);
   const base = Number(baseFare);
@@ -117,11 +180,18 @@ app.put('/api/routes/:id', asyncHandler(async (req, res) => {
   }
 }));
 
-app.post('/api/topup', asyncHandler(async (req, res) => {
+app.post('/api/topup', requireAuth, asyncHandler(async (req, res) => {
+  if (req.user.role !== 'user') {
+    return res.status(403).json({ success: false, message: 'Not permitted' });
+  }
+  if (req.body.userId !== undefined && Number(req.body.userId) !== req.user.id) {
+    return res.status(403).json({ success: false, message: 'Not permitted' });
+  }
+
   const amount = parseAmount(req.body.amount);
   if (amount === null) return res.status(400).json({ success: false, message: 'Invalid amount' });
 
-  const userId = Number(req.body.userId);
+  const userId = req.user.id;
   const balance = Number.isInteger(userId)
     ? await withTransaction(async (client) => {
         const { rows } = await client.query(
@@ -141,7 +211,7 @@ app.post('/api/topup', asyncHandler(async (req, res) => {
   res.json({ success: true, balance });
 }));
 
-app.post('/api/rfid/tap', asyncHandler(async (req, res) => {
+app.post('/api/rfid/tap', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const userId = Number(req.body.userId);
   if (!Number.isInteger(userId)) {
     return res.status(404).json({ success: false, message: 'RFID unregistered' });
@@ -152,7 +222,7 @@ app.post('/api/rfid/tap', asyncHandler(async (req, res) => {
 
   const result = await withTransaction(async (client) => {
     const { rows } = await client.query(
-      'UPDATE users SET balance = balance - $2 WHERE id = $1 AND balance >= $2 RETURNING balance',
+      "UPDATE users SET balance = balance - $2 WHERE id = $1 AND status = 'active' AND balance >= $2 RETURNING balance",
       [userId, amount]
     );
 
@@ -164,8 +234,9 @@ app.post('/api/rfid/tap', asyncHandler(async (req, res) => {
       return { status: 200, newBalance: rows[0].balance };
     }
 
-    const found = await client.query('SELECT 1 FROM users WHERE id = $1', [userId]);
-    return { status: found.rows.length > 0 ? 402 : 404 };
+    const found = await client.query('SELECT status FROM users WHERE id = $1', [userId]);
+    if (found.rows.length === 0 || found.rows[0].status === 'deleted') return { status: 404 };
+    return { status: found.rows[0].status === 'active' ? 402 : 403 };
   });
 
   if (result.status === 200) {
@@ -173,6 +244,9 @@ app.post('/api/rfid/tap', asyncHandler(async (req, res) => {
   }
   if (result.status === 402) {
     return res.status(402).json({ success: false, message: 'Insufficient funds' });
+  }
+  if (result.status === 403) {
+    return res.status(403).json({ success: false, message: 'Card deactivated' });
   }
   res.status(404).json({ success: false, message: 'RFID unregistered' });
 }));
@@ -184,6 +258,10 @@ app.use((err, req, res, next) => {
 });
 
 const start = async () => {
+  if (!process.env.JWT_SECRET) {
+    console.error('JWT_SECRET is not set. Add it to backend/.env (see backend/.env.example).');
+    process.exit(1);
+  }
   if (!process.env.DATABASE_URL) {
     console.error('DATABASE_URL is not set. Add it to backend/.env (see backend/.env.example).');
     process.exit(1);

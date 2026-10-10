@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { pool, withTransaction } from './index.js';
 import { seedUsers, seedRoutes } from './seed.js';
+import { hashPassword, isHashed } from '../lib/passwords.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
@@ -18,8 +19,28 @@ export const syncSequences = async (client) => {
 
 export const ensureSchema = (client = pool) => client.query(schemaSql);
 
+// One-time conversion of the legacy plaintext `password` column. Safe to repeat: it is a no-op once the column is gone.
+const migrateLegacyPasswords = () =>
+  withTransaction(async (client) => {
+    await client.query('LOCK TABLE users IN EXCLUSIVE MODE');
+    const { rows: cols } = await client.query(
+      "SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'password' AND table_schema = current_schema()"
+    );
+    if (cols.length === 0) return;
+
+    const { rows } = await client.query('SELECT id, password, password_hash FROM users');
+    for (const u of rows) {
+      if (u.password_hash) continue;
+      const hash = isHashed(u.password) ? u.password : await hashPassword(u.password);
+      await client.query('UPDATE users SET password_hash = $2 WHERE id = $1', [u.id, hash]);
+    }
+    await client.query('ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL');
+    await client.query('ALTER TABLE users DROP COLUMN password');
+  });
+
 export const initDatabase = async () => {
   await ensureSchema();
+  await migrateLegacyPasswords();
 
   await withTransaction(async (client) => {
     // Serialise concurrent first starts.
@@ -29,8 +50,8 @@ export const initDatabase = async () => {
 
     for (const u of seedUsers) {
       await client.query(
-        'INSERT INTO users (id, username, password, role, balance) VALUES ($1, $2, $3, $4, $5)',
-        [u.id, u.username, u.password, u.role, u.balance]
+        'INSERT INTO users (id, username, password_hash, role, balance) VALUES ($1, $2, $3, $4, $5)',
+        [u.id, u.username, await hashPassword(u.password), u.role, u.balance]
       );
     }
     for (const r of seedRoutes) {

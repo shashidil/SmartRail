@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { pool, withTransaction } from '../db/index.js';
 import { ensureSchema, syncSequences } from '../db/init.js';
+import { hashPassword, isHashed } from '../lib/passwords.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_PATH = path.join(__dirname, '..', 'data.json');
@@ -23,8 +24,8 @@ const run = async () => {
 
     for (const u of data.users || []) {
       await client.query(
-        'INSERT INTO users (id, username, password, role, balance) VALUES ($1, $2, $3, $4, $5)',
-        [u.id, u.username, u.password, u.role, u.balance || 0]
+        'INSERT INTO users (id, username, password_hash, role, balance) VALUES ($1, $2, $3, $4, $5)',
+        [u.id, u.username, isHashed(u.password) ? u.password : await hashPassword(u.password), u.role, u.balance || 0]
       );
     }
     for (const r of data.routes || []) {
