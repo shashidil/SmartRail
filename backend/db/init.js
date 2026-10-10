@@ -38,9 +38,22 @@ const migrateLegacyPasswords = () =>
     await client.query('ALTER TABLE users DROP COLUMN password');
   });
 
+// Hashes any password_hash value that is still readable (e.g. written by hand with a SQL client).
+const hashReadablePasswords = async () => {
+  const { rows } = await pool.query("SELECT id, password_hash FROM users WHERE password_hash <> ''");
+  for (const u of rows) {
+    if (isHashed(u.password_hash)) continue;
+    await pool.query(
+      'UPDATE users SET password_hash = $2, token_version = token_version + 1 WHERE id = $1 AND password_hash = $3',
+      [u.id, await hashPassword(u.password_hash), u.password_hash]
+    );
+  }
+};
+
 export const initDatabase = async () => {
   await ensureSchema();
   await migrateLegacyPasswords();
+  await hashReadablePasswords();
 
   await withTransaction(async (client) => {
     // Serialise concurrent first starts.
