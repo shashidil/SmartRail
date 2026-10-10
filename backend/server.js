@@ -5,6 +5,10 @@ import { query, withTransaction } from './db/index.js';
 import { initDatabase } from './db/init.js';
 import { requireAuth, requireRole, signToken, publicUser } from './middleware/auth.js';
 import usersRouter from './routes/users.js';
+import railRoutesRouter from './routes/railRoutes.js';
+import tripsRouter from './routes/trips.js';
+import trainsRouter from './routes/trains.js';
+import { formatTxnDate } from './lib/format.js';
 import {
   hashPassword,
   verifyPassword,
@@ -27,15 +31,10 @@ app.use(express.json());
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-const formatTxnDate = (d) =>
-  d.toLocaleDateString() + ', ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
 const parseAmount = (value) => {
   const amount = Number(value);
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 };
-
-const ROUTE_COLUMNS = 'id, name, stations, base_fare AS "baseFare", per_km AS "perKm", total_km AS "totalKm"';
 
 // Routes
 app.get('/', (req, res) => {
@@ -153,32 +152,8 @@ app.get('/api/history/:userId', requireAuth, asyncHandler(async (req, res) => {
 
 app.use('/api/users', usersRouter);
 
-app.get('/api/routes', requireAuth, asyncHandler(async (req, res) => {
-  const { rows } = await query(`SELECT ${ROUTE_COLUMNS} FROM routes ORDER BY id`);
-  res.json({ success: true, routes: rows });
-}));
-
-app.put('/api/routes/:id', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
-  const { baseFare, perKm } = req.body;
-  const id = parseInt(req.params.id, 10);
-  const base = Number(baseFare);
-  const per = Number(perKm);
-
-  if (Number.isNaN(id) || !Number.isFinite(base) || !Number.isFinite(per)) {
-    return res.status(404).json({ success: false, message: 'Route not found' });
-  }
-
-  const { rows } = await query(
-    `UPDATE routes SET base_fare = $2, per_km = $3 WHERE id = $1 RETURNING ${ROUTE_COLUMNS}`,
-    [id, base, per]
-  );
-
-  if (rows.length > 0) {
-    res.json({ success: true, route: rows[0] });
-  } else {
-    res.status(404).json({ success: false, message: 'Route not found' });
-  }
-}));
+app.use('/api/routes', railRoutesRouter);
+app.use('/api/trains', trainsRouter);
 
 app.post('/api/topup', requireAuth, asyncHandler(async (req, res) => {
   if (req.user.role !== 'user') {
@@ -211,45 +186,8 @@ app.post('/api/topup', requireAuth, asyncHandler(async (req, res) => {
   res.json({ success: true, balance });
 }));
 
-app.post('/api/rfid/tap', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
-  const userId = Number(req.body.userId);
-  if (!Number.isInteger(userId)) {
-    return res.status(404).json({ success: false, message: 'RFID unregistered' });
-  }
-
-  const amount = parseAmount(req.body.amount);
-  if (amount === null) return res.status(400).json({ success: false, message: 'Invalid amount' });
-
-  const result = await withTransaction(async (client) => {
-    const { rows } = await client.query(
-      "UPDATE users SET balance = balance - $2 WHERE id = $1 AND status = 'active' AND balance >= $2 RETURNING balance",
-      [userId, amount]
-    );
-
-    if (rows.length > 0) {
-      await client.query(
-        "INSERT INTO transactions (user_id, type, title, amount) VALUES ($1, 'debit', 'Station Exit Tap', $2)",
-        [userId, amount]
-      );
-      return { status: 200, newBalance: rows[0].balance };
-    }
-
-    const found = await client.query('SELECT status FROM users WHERE id = $1', [userId]);
-    if (found.rows.length === 0 || found.rows[0].status === 'deleted') return { status: 404 };
-    return { status: found.rows[0].status === 'active' ? 402 : 403 };
-  });
-
-  if (result.status === 200) {
-    return res.json({ success: true, message: 'Tap Approved', newBalance: result.newBalance });
-  }
-  if (result.status === 402) {
-    return res.status(402).json({ success: false, message: 'Insufficient funds' });
-  }
-  if (result.status === 403) {
-    return res.status(403).json({ success: false, message: 'Card deactivated' });
-  }
-  res.status(404).json({ success: false, message: 'RFID unregistered' });
-}));
+// /api/rfid/tap (start/end of trip) and /api/trips live in routes/trips.js
+app.use('/api', tripsRouter);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

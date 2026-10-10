@@ -13,8 +13,10 @@ SmartRail is a premium, PWA-certified smart card ticketing system for Sri Lanka 
 ## ✅ Current System Capabilities
 - [x] **Persistence:** Real-time saving of balances, users, and transaction logs.
 - [x] **Full 9-Line Network:** Includes all official SLR lines (Main, Coast, Northern, Kelani Valley, etc.) with precise KM markers.
-- [x] **Live Tracking Board:** Simulated movement and status updates for iconic trains like Udarata Menike and Yal Devi.
-- [x] **Admin Tooling:** Dynamic pricing updates, RFID simulation, and full user management (create, edit, deactivate, reset password, delete).
+- [x] **Live Tracking Board:** Shows train positions posted by a GPS feed, with a "no signal" state when updates stop.
+- [x] **Routes & Pricing:** Admins manage Routes, Stations and one fixed trip Fare per Route with an audit trail; Passengers see a read-only view.
+- [x] **Trip taps:** A tap at the start and end of a trip; the Route's fixed Fare is debited once on completion.
+- [x] **Admin Tooling:** Route and fixed-fare management, trip-based RFID simulation, and full user management (create, edit, deactivate, reset password, delete).
 - [x] **Secure Auth:** bcrypt-hashed passwords, JWT sessions with expiry and revocation, role-enforced API, login throttling.
 - [x] **Transaction Ledger:** Automated receipt generation for every top-up and tap.
 - [x] **UX Excellence:** 3D animated login, responsive layouts, and strict "Maestro" design (No-Purple).

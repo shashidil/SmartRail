@@ -7,6 +7,8 @@ import {
   UserPlus, KeyRound, Trash2, Ban, RotateCcw, X
 } from 'lucide-react';
 import { api, getStoredUser, clearSession } from '../api';
+import RoutesPricing from '../components/admin/RoutesPricing';
+import RfidTerminal from '../components/admin/RfidTerminal';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -17,10 +19,6 @@ const AdminDashboard = () => {
   const [passengers, setPassengers] = useState([]);
   const [routes, setRoutes] = useState([]);
   
-  // RFID Sim State
-  const [rfidForm, setRfidForm] = useState({ userId: '', amount: '150' });
-  const [rfidStatus, setRfidStatus] = useState(null);
-
   useEffect(() => {
     const parsedUser = getStoredUser();
     if (!parsedUser) {
@@ -55,35 +53,6 @@ const AdminDashboard = () => {
       }
     } catch (e) {
       console.error("Failed to fetch routes");
-    }
-  };
-
-  const handleRouteUpdate = async (id, baseFare, perKm) => {
-    try {
-      const res = await api.put(`/api/routes/${id}`, { baseFare, perKm });
-      if (res.data.success) {
-        fetchRoutes(); // Re-fetch to confirm update
-        alert(`Route ${res.data.route.name} Pricing Updated!`);
-      }
-    } catch (e) {
-      alert("Failed to update route pricing.");
-    }
-  };
-
-  const handleRfidTap = async (e) => {
-    e.preventDefault();
-    setRfidStatus({ loading: true });
-    try {
-      const res = await api.post('/api/rfid/tap', {
-        userId: rfidForm.userId,
-        amount: Number(rfidForm.amount)
-      });
-      if (res.data.success) {
-        setRfidStatus({ type: 'success', msg: `Payment Rs.${rfidForm.amount} Approved.` });
-        fetchUsers(); // Refresh balances
-      }
-    } catch (e) {
-      setRfidStatus({ type: 'error', msg: e.response?.data?.message || 'Error processing RFID tap' });
     }
   };
 
@@ -311,7 +280,7 @@ const AdminDashboard = () => {
                       <div className="w-10 h-10 rounded-sm bg-slate-50 flex items-center justify-center text-rail-blue"><Map className="w-5 h-5" /></div>
                     </div>
                     <div>
-                      <h3 className="text-3xl font-bold outfit tracking-tight">{routes.length || '...'}</h3>
+                      <h3 className="text-3xl font-bold outfit tracking-tight">{routes.length ? routes.filter((r) => r.status === 'active').length : '...'}</h3>
                       <p className="text-sm text-slate-500 font-medium uppercase tracking-wider mt-1">Active Routes</p>
                     </div>
                   </div>
@@ -406,95 +375,10 @@ const AdminDashboard = () => {
             )}
 
             {/* ROUTES TAB */}
-            {activeTab === 'routes' && (
-              <motion.div key="routes" initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-10 }} className="space-y-6">
-                <div>
-                  <h1 className="text-2xl font-bold outfit">Routes & Pricing Engine</h1>
-                  <p className="text-slate-500 text-sm mt-1">Configure base fares and per-km rates for the Smart Card billing system.</p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                  {routes.map(r => (
-                    <div key={r.id} className="glass-card relative overflow-hidden group">
-                       <div className="flex justify-between items-start mb-6">
-                         <div>
-                            <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-sm text-[10px] uppercase font-bold tracking-widest mb-2 inline-block">ID: LK-R{r.id.toString().padStart(2, '0')}</span>
-                            <h3 className="text-xl font-bold outfit">{r.name}</h3>
-                            <p className="text-sm font-mono text-slate-500 mt-1">{r.stations}</p>
-                         </div>
-                         <div className="w-10 h-10 rounded-sm bg-rail-blue/5 flex items-center justify-center text-rail-blue"><Map className="w-5 h-5" /></div>
-                       </div>
-
-                       <form 
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          const formData = new FormData(e.target);
-                          handleRouteUpdate(r.id, formData.get('baseFare'), formData.get('perKm'));
-                        }} 
-                        className="space-y-4"
-                       >
-                         <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-sm border border-slate-100">
-                           <div>
-                             <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1 block">Base Fare (Rs)</label>
-                             <input type="number" name="baseFare" defaultValue={r.baseFare} className="input-field py-1 text-sm bg-white" required />
-                           </div>
-                           <div>
-                             <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1 block">Per KM (Rs)</label>
-                             <input type="number" name="perKm" defaultValue={r.perKm} className="input-field py-1 text-sm bg-white" required />
-                           </div>
-                         </div>
-                         <button type="submit" className="w-full border border-slate-200 text-slate-600 hover:bg-slate-900 hover:text-white hover:border-slate-900 font-bold py-2 rounded-sm transition-colors uppercase tracking-widest text-xs flex justify-center items-center gap-2">
-                           <Edit3 className="w-3 h-3" /> Update Pricing Schema
-                         </button>
-                       </form>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
+            {activeTab === 'routes' && <RoutesPricing key="routes" routes={routes} onReload={fetchRoutes} />}
 
             {/* RFID EMULATION TAB */}
-            {activeTab === 'rfid' && (
-              <motion.div key="rfid" initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-10 }} className="space-y-6 max-w-2xl">
-                <div>
-                  <h1 className="text-2xl font-bold outfit">RFID Terminal Emulator</h1>
-                  <p className="text-slate-500 text-sm mt-1">Simulate a hardware ticket barrier tap.</p>
-                </div>
-                
-                <div className="glass-card">
-                  <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
-                    <div className="w-12 h-12 bg-slate-900 rounded-sm flex items-center justify-center text-white">
-                      <Zap className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold outfit text-lg">Station Module</h3>
-                      <p className="text-xs text-slate-400 font-mono">ID: TERM-FORT-01</p>
-                    </div>
-                  </div>
-
-                  <form onSubmit={handleRfidTap} className="space-y-4">
-                    {rfidStatus && (
-                      <div className={`p-3 text-sm font-medium border-l-2 ${rfidStatus.type === 'error' ? 'bg-red-50 text-red-600 border-red-500' : 'bg-green-50 text-green-600 border-green-500'}`}>
-                        {rfidStatus.loading ? 'Scanning via hardware...' : rfidStatus.msg}
-                      </div>
-                    )}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Passenger ID (Integer)</label>
-                        <input type="number" required placeholder="e.g. 1" className="input-field" value={rfidForm.userId} onChange={e => setRfidForm({...rfidForm, userId: e.target.value})} />
-                      </div>
-                      <div>
-                        <label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Fare Amount (Rs.)</label>
-                        <input type="number" required placeholder="150" className="input-field" value={rfidForm.amount} onChange={e => setRfidForm({...rfidForm, amount: e.target.value})} />
-                      </div>
-                    </div>
-                    <button type="submit" className="w-full bg-slate-900 hover:bg-rail-blue text-white font-bold py-3 rounded-sm transition-colors uppercase tracking-widest text-sm flex justify-center items-center gap-2">
-                       Simulate Smart Card Tap
-                    </button>
-                  </form>
-                </div>
-              </motion.div>
-            )}
+            {activeTab === 'rfid' && <RfidTerminal key="rfid" routes={routes} onTapDone={fetchUsers} />}
 
           </AnimatePresence>
         </div>

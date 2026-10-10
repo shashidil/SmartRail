@@ -10,6 +10,7 @@ const Dashboard = () => {
   const [isToppingUp, setIsToppingUp] = useState(false);
   const [topUpSuccess, setTopUpSuccess] = useState(false);
   const [history, setHistory] = useState([]);
+  const [trips, setTrips] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '' });
@@ -24,6 +25,7 @@ const Dashboard = () => {
     }
     setUser(parsedUser);
     fetchHistory(parsedUser.id);
+    fetchTrips();
   }, [navigate]);
 
   const fetchHistory = async (userId) => {
@@ -37,6 +39,15 @@ const Dashboard = () => {
       console.error("Failed to fetch history");
     } finally {
       setIsLoadingHistory(false);
+    }
+  };
+
+  const fetchTrips = async () => {
+    try {
+      const res = await api.get('/api/trips/mine');
+      if (res.data.success) setTrips(res.data.trips);
+    } catch (e) {
+      console.error("Failed to fetch trips");
     }
   };
 
@@ -286,7 +297,7 @@ const Dashboard = () => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
-              className="glass-card h-full"
+              className="glass-card"
             >
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-2">
@@ -325,6 +336,41 @@ const Dashboard = () => {
                   ))
                 )}
               </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="glass-card mt-8"
+            >
+              <div className="flex items-center gap-2 mb-6">
+                <TrainFront className="text-slate-400 w-5 h-5" />
+                <h3 className="text-lg font-bold outfit">My Trips</h3>
+              </div>
+              {trips.length === 0 ? (
+                <p className="py-6 text-center text-xs font-bold uppercase tracking-widest text-slate-400">No trips yet. Tap in at the start of your journey.</p>
+              ) : (
+                <div className="space-y-3">
+                  {trips.map((t) => (
+                    <div key={t.id} className="flex items-center justify-between p-4 rounded-sm border border-slate-100">
+                      <div>
+                        <p className="font-semibold text-slate-900">{t.routeName}</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {t.startStation} → {t.endStation || '...'}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-mono mt-1 uppercase">{new Date(t.startedAt).toLocaleString()}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold font-mono text-slate-900">Rs. {t.fare}</p>
+                        <span className={`text-[10px] uppercase font-bold tracking-widest ${t.status === 'open' ? 'text-rail-blue' : t.status === 'completed' ? 'text-green-600' : 'text-slate-400'}`}>
+                          {t.status === 'open' ? 'In progress' : t.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </motion.div>
           </div>
 

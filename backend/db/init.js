@@ -4,13 +4,14 @@ import { fileURLToPath } from 'url';
 import { pool, withTransaction } from './index.js';
 import { seedUsers, seedRoutes } from './seed.js';
 import { hashPassword, isHashed } from '../lib/passwords.js';
+import { setRouteStations } from './stations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
 
 // Keep sequences ahead of explicitly inserted ids.
 export const syncSequences = async (client) => {
-  for (const table of ['users', 'routes', 'transactions']) {
+  for (const table of ['users', 'routes', 'transactions', 'stations', 'trips', 'route_audit']) {
     await client.query(
       `SELECT setval(pg_get_serial_sequence('${table}', 'id'), GREATEST(COALESCE((SELECT MAX(id) FROM ${table}), 0), 1), (SELECT COUNT(*) > 0 FROM ${table}))`
     );
@@ -50,10 +51,35 @@ const hashReadablePasswords = async () => {
   }
 };
 
+// Converts routes created before fixed fares and stations existed. Idempotent: only touches routes
+// that still lack a fare or an ordered station list.
+const LEGACY_STATIONS = /^(.+?)\s*\(\s*[\d.]+\s*km\)\s*⇄\s*(.+?)\s*\(\s*[\d.]+\s*km\)\s*$/;
+
+const migrateRoutes = () =>
+  withTransaction(async (client) => {
+    await client.query('UPDATE routes SET fare = base_fare WHERE fare IS NULL AND base_fare IS NOT NULL');
+    await client.query('UPDATE routes SET fare = 0 WHERE fare IS NULL');
+
+    const { rows } = await client.query(
+      `SELECT r.id, r.name, r.stations FROM routes r
+       WHERE NOT EXISTS (SELECT 1 FROM route_stations rs WHERE rs.route_id = r.id)`
+    );
+    for (const r of rows) {
+      const match = LEGACY_STATIONS.exec(r.stations || '');
+      if (!match) {
+        console.warn(`Route "${r.name}" has no parseable stations; an Admin must add them.`);
+        continue;
+      }
+      await setRouteStations(client, r.id, [match[1], match[2]]);
+    }
+    await syncSequences(client);
+  });
+
 export const initDatabase = async () => {
   await ensureSchema();
   await migrateLegacyPasswords();
   await hashReadablePasswords();
+  await migrateRoutes();
 
   await withTransaction(async (client) => {
     // Serialise concurrent first starts.
@@ -68,10 +94,8 @@ export const initDatabase = async () => {
       );
     }
     for (const r of seedRoutes) {
-      await client.query(
-        'INSERT INTO routes (id, name, stations, base_fare, per_km, total_km) VALUES ($1, $2, $3, $4, $5, $6)',
-        [r.id, r.name, r.stations, r.baseFare, r.perKm, r.totalKm]
-      );
+      await client.query('INSERT INTO routes (id, name, fare) VALUES ($1, $2, $3)', [r.id, r.name, r.fare]);
+      await setRouteStations(client, r.id, r.stations);
     }
     await syncSequences(client);
   });
