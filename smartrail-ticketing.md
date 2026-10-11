@@ -37,7 +37,7 @@ SmartRail is a premium, PWA-certified smart card ticketing system for Sri Lanka 
 ## 📅 Maintenance & Roadmap
 - [x] **Phase 1-4:** Foundation, Design System, Auth, and Dashboards (DONE).
 - [x] **Phase 5:** Database Persistence & PWA Conversion (DONE).
-- [ ] **Phase 6:** Physical Arduino/ESP32 Hardware Connection.
+- [ ] **Phase 6:** Physical Arduino/ESP32 Hardware Connection. Software path DONE: PayHere top-ups, device-key authenticated `POST /api/device/tap`, card/device registry in the Admin dashboard. Remaining: reader firmware and provisioning.
 - [ ] **Phase 7:** Passenger Mobile App (Native Shell).
 
 ---

@@ -11,7 +11,7 @@ const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
 
 // Keep sequences ahead of explicitly inserted ids.
 export const syncSequences = async (client) => {
-  for (const table of ['users', 'routes', 'transactions', 'stations', 'trips', 'route_audit']) {
+  for (const table of ['users', 'routes', 'transactions', 'stations', 'trips', 'route_audit', 'topups', 'cards', 'devices', 'tap_events']) {
     await client.query(
       `SELECT setval(pg_get_serial_sequence('${table}', 'id'), GREATEST(COALESCE((SELECT MAX(id) FROM ${table}), 0), 1), (SELECT COUNT(*) > 0 FROM ${table}))`
     );

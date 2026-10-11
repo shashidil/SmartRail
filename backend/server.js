@@ -8,6 +8,12 @@ import usersRouter from './routes/users.js';
 import railRoutesRouter from './routes/railRoutes.js';
 import tripsRouter from './routes/trips.js';
 import trainsRouter from './routes/trains.js';
+import topupsRouter from './routes/topups.js';
+import deviceRouter from './routes/device.js';
+import cardsRouter from './routes/cards.js';
+import devicesRouter from './routes/devices.js';
+import { payhereNotify } from './routes/payhereNotify.js';
+import { payhereMode } from './lib/payhere.js';
 import { formatTxnDate } from './lib/format.js';
 import {
   hashPassword,
@@ -27,6 +33,8 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());
+// PayHere posts its payment notification form-encoded; it is verified by md5sig.
+app.post('/api/payhere/notify', express.urlencoded({ extended: false }), payhereNotify);
 app.use(express.json());
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -154,8 +162,15 @@ app.use('/api/users', usersRouter);
 
 app.use('/api/routes', railRoutesRouter);
 app.use('/api/trains', trainsRouter);
+app.use('/api/topups', topupsRouter);
+app.use('/api/device', deviceRouter);
+app.use('/api/cards', cardsRouter);
 
+// Legacy top-up without payment: off unless ALLOW_DEMO_TOPUP=true (real top-ups go through /api/topups).
 app.post('/api/topup', requireAuth, asyncHandler(async (req, res) => {
+  if (process.env.ALLOW_DEMO_TOPUP !== 'true') {
+    return res.status(403).json({ success: false, message: 'Online payment is required to top up.' });
+  }
   if (req.user.role !== 'user') {
     return res.status(403).json({ success: false, message: 'Not permitted' });
   }
@@ -187,6 +202,7 @@ app.post('/api/topup', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // /api/rfid/tap (start/end of trip) and /api/trips live in routes/trips.js
+app.use('/api', devicesRouter);
 app.use('/api', tripsRouter);
 
 // eslint-disable-next-line no-unused-vars
@@ -212,6 +228,8 @@ const start = async () => {
     console.error('Could not initialise the database:', reason);
     process.exit(1);
   }
+  const mode = payhereMode();
+  console.log(mode === 'unconfigured' ? 'PayHere: not configured (online top-ups unavailable)' : `PayHere mode: ${mode}`);
   app.listen(PORT, () => {
     console.log(`🚀 SmartRail Backend running on http://localhost:${PORT}`);
   });

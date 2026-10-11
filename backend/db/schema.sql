@@ -112,3 +112,84 @@ CREATE TABLE IF NOT EXISTS train_positions (
   speed_kmh   NUMERIC(6,1),
   reported_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Online top-ups (PayHere): one row per attempt; credited exactly once by settleTopup.
+-- stripe_session_id / stripe_payment_intent_id / stripe_events are legacy from the dropped Stripe integration.
+CREATE TABLE IF NOT EXISTS topups (
+  id                       BIGSERIAL PRIMARY KEY,
+  user_id                  INTEGER NOT NULL REFERENCES users(id),
+  amount                   NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  currency                 TEXT NOT NULL DEFAULT 'lkr',
+  status                   TEXT NOT NULL DEFAULT 'pending'
+                           CHECK (status IN ('pending', 'succeeded', 'failed', 'cancelled', 'expired', 'review')),
+  stripe_session_id        TEXT UNIQUE,
+  stripe_payment_intent_id TEXT,
+  failure_reason           TEXT,
+  transaction_id           BIGINT REFERENCES transactions(id),
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at               TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS topups_user_id_idx ON topups (user_id, id DESC);
+CREATE INDEX IF NOT EXISTS topups_status_idx ON topups (status, id DESC);
+
+CREATE TABLE IF NOT EXISTS stripe_events (
+  id           TEXT PRIMARY KEY,
+  type         TEXT,
+  topup_id     BIGINT,
+  processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  note         TEXT
+);
+
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS topup_id BIGINT REFERENCES topups(id);
+CREATE UNIQUE INDEX IF NOT EXISTS transactions_topup_id_key ON transactions (topup_id) WHERE topup_id IS NOT NULL;
+
+-- Physical RFID cards (UID -> Passenger) and the reader devices allowed to submit taps.
+CREATE TABLE IF NOT EXISTS cards (
+  id         SERIAL PRIMARY KEY,
+  uid        TEXT NOT NULL,
+  user_id    INTEGER NOT NULL REFERENCES users(id),
+  status     TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'blocked')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS cards_uid_key ON cards (upper(uid));
+
+CREATE TABLE IF NOT EXISTS devices (
+  id           SERIAL PRIMARY KEY,
+  name         TEXT NOT NULL,
+  key_hash     TEXT NOT NULL UNIQUE,
+  route_id     INTEGER NOT NULL REFERENCES routes(id),
+  station_id   INTEGER NOT NULL REFERENCES stations(id),
+  status       TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+  last_seen_at TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS tap_events (
+  id          BIGSERIAL PRIMARY KEY,
+  device_id   INTEGER REFERENCES devices(id),
+  event_id    TEXT,
+  card_uid    TEXT,
+  user_id     INTEGER,
+  action      TEXT,
+  outcome     TEXT NOT NULL,
+  http_status INTEGER,
+  response    JSONB,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS tap_events_device_event_key ON tap_events (device_id, event_id)
+  WHERE device_id IS NOT NULL AND event_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS tap_events_id_idx ON tap_events (id DESC);
+
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS start_source TEXT NOT NULL DEFAULT 'admin';
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS end_source TEXT;
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS device_id INTEGER REFERENCES devices(id);
+
+ALTER TABLE topups ADD COLUMN IF NOT EXISTS payment_id TEXT;
+CREATE TABLE IF NOT EXISTS payment_events (
+  id           TEXT PRIMARY KEY,
+  type         TEXT,
+  topup_id     BIGINT,
+  processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  note         TEXT
+);

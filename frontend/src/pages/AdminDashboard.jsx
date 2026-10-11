@@ -9,6 +9,8 @@ import {
 import { api, getStoredUser, clearSession } from '../api';
 import RoutesPricing from '../components/admin/RoutesPricing';
 import RfidTerminal from '../components/admin/RfidTerminal';
+import PaymentsPanel from '../components/admin/PaymentsPanel';
+import CardsDevices from '../components/admin/CardsDevices';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -155,6 +157,12 @@ const AdminDashboard = () => {
           </button>
           <button onClick={() => setActiveTab('rfid')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'rfid' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <CreditCard className="w-5 h-5 mr-3" /> RFID Emulation
+          </button>
+          <button onClick={() => setActiveTab('payments')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'payments' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+            <CreditCard className="w-5 h-5 mr-3" /> Payments
+          </button>
+          <button onClick={() => setActiveTab('devices')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'devices' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+            <Zap className="w-5 h-5 mr-3" /> Readers & Cards
           </button>
         </nav>
 
@@ -379,6 +387,12 @@ const AdminDashboard = () => {
 
             {/* RFID EMULATION TAB */}
             {activeTab === 'rfid' && <RfidTerminal key="rfid" routes={routes} onTapDone={fetchUsers} />}
+
+            {/* PAYMENTS TAB */}
+            {activeTab === 'payments' && <PaymentsPanel key="payments" passengers={passengers} />}
+
+            {/* READERS & CARDS TAB */}
+            {activeTab === 'devices' && <CardsDevices key="devices" routes={routes} passengers={passengers} />}
 
           </AnimatePresence>
         </div>

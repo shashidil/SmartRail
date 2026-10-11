@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { CreditCard, History, MapPin, Zap, LogOut, ArrowRight, TrainFront, CheckCircle2, KeyRound } from 'lucide-react';
 import { api, getStoredUser, setSession, clearSession } from '../api';
+import TopUpModal from '../components/TopUpModal';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
-  const [isToppingUp, setIsToppingUp] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [showTopUp, setShowTopUp] = useState(false);
   const [topUpSuccess, setTopUpSuccess] = useState(false);
+  const [topUpNotice, setTopUpNotice] = useState(null);
+  const [topups, setTopups] = useState([]);
   const [history, setHistory] = useState([]);
   const [trips, setTrips] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
@@ -26,7 +30,77 @@ const Dashboard = () => {
     setUser(parsedUser);
     fetchHistory(parsedUser.id);
     fetchTrips();
+    fetchTopups();
   }, [navigate]);
+
+  // Returning from PayHere: the return page is not proof of payment, so ask the server for the outcome.
+  useEffect(() => {
+    const outcome = searchParams.get('topup');
+    const id = searchParams.get('id');
+    if (!outcome || !id) return undefined;
+    setSearchParams({}, { replace: true });
+
+    let stopped = false;
+    const settle = async () => {
+      try {
+        if (outcome === 'cancelled') {
+          await api.post(`/api/topups/${id}/cancel`).catch(() => {});
+        }
+        for (let attempt = 0; attempt < 8 && !stopped; attempt += 1) {
+          const res = await api.get(`/api/topups/${id}`);
+          const { topup, balance } = res.data;
+          if (topup.status === 'succeeded') {
+            const current = getStoredUser();
+            if (current) {
+              const updated = { ...current, balance };
+              setUser(updated);
+              setSession({ user: updated });
+            }
+            setTopUpNotice({ type: 'success', text: `Payment successful. Rs. ${topup.amount} added to your balance.` });
+            setTopUpSuccess(true);
+            setTimeout(() => setTopUpSuccess(false), 2000);
+            break;
+          }
+          if (topup.status === 'cancelled') {
+            setTopUpNotice({ type: 'info', text: 'Payment cancelled. Your balance was not changed.' });
+            break;
+          }
+          if (topup.status === 'review') {
+            setTopUpNotice({ type: 'error', text: 'Your payment needs review by an administrator. Your balance has not changed yet.' });
+            break;
+          }
+          if (topup.status === 'failed' || topup.status === 'expired') {
+            const reason = topup.failureReason ? `: ${topup.failureReason}` : '';
+            setTopUpNotice({ type: 'error', text: `Payment ${topup.status}${reason}. Your balance was not changed.` });
+            break;
+          }
+          if (attempt === 7) {
+            setTopUpNotice({ type: 'info', text: 'Payment is still being confirmed. Your balance will update shortly.' });
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+      } catch (e) {
+        setTopUpNotice({ type: 'error', text: 'Could not confirm the payment status. Refresh to check your balance.' });
+      } finally {
+        const stored = getStoredUser();
+        if (stored && !stopped) fetchHistory(stored.id);
+        fetchTopups();
+      }
+    };
+    settle();
+    return () => { stopped = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fetchTopups = async () => {
+    try {
+      const res = await api.get('/api/topups/mine');
+      if (res.data.success) setTopups(res.data.topups);
+    } catch (e) {
+      console.error("Failed to fetch top-ups");
+    }
+  };
 
   const fetchHistory = async (userId) => {
     setIsLoadingHistory(true);
@@ -75,28 +149,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleTopUp = async () => {
-    if (isToppingUp) return;
-    setIsToppingUp(true);
-    try {
-      const response = await api.post('/api/topup', { amount: 500 });
-
-      if (response.data.success) {
-        const updatedUser = { ...user, balance: response.data.balance };
-        setUser(updatedUser);
-        setSession({ user: updatedUser });
-        
-        setTopUpSuccess(true);
-        fetchHistory(user.id);
-        setTimeout(() => setTopUpSuccess(false), 2000); 
-      }
-    } catch (err) {
-      console.error("Top up failed", err);
-    } finally {
-      setIsToppingUp(false);
-    }
-  };
-
   if (!user) return null;
 
   return (
@@ -127,6 +179,8 @@ const Dashboard = () => {
           </button>
         </div>
       </nav>
+
+      {showTopUp && <TopUpModal onClose={() => setShowTopUp(false)} />}
 
       {showPassword && (
         <div className="fixed inset-0 z-[60] bg-slate-900/50 flex items-center justify-center p-4" onClick={() => setShowPassword(false)}>
@@ -204,6 +258,13 @@ const Dashboard = () => {
           </div>
         </motion.section>
 
+        {topUpNotice && (
+          <div className={`mb-6 p-3 border-l-2 text-sm font-medium flex justify-between items-start gap-4 ${topUpNotice.type === 'success' ? 'bg-green-50 border-green-500 text-green-700' : topUpNotice.type === 'error' ? 'bg-red-50 border-red-500 text-red-600' : 'bg-blue-50 border-blue-500 text-blue-700'}`}>
+            <span>{topUpNotice.text}</span>
+            <button onClick={() => setTopUpNotice(null)} className="text-xs uppercase font-bold tracking-widest">Dismiss</button>
+          </div>
+        )}
+
         {/* Header Greeting */}
         <header className="mb-10">
           <motion.h1 
@@ -268,14 +329,13 @@ const Dashboard = () => {
               className="grid grid-cols-2 gap-4"
             >
               <button 
-                onClick={handleTopUp}
-                disabled={isToppingUp}
-                className="glass-card hover:border-rail-blue hover:shadow-md transition-all flex flex-col items-center justify-center p-6 gap-3 group text-left disabled:opacity-50"
+                onClick={() => setShowTopUp(true)}
+                className="glass-card hover:border-rail-blue hover:shadow-md transition-all flex flex-col items-center justify-center p-6 gap-3 group text-left"
               >
                 <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-blue-50 transition-colors">
                   <CreditCard className="text-rail-blue w-5 h-5" />
                 </div>
-                <span className="font-semibold text-sm">{isToppingUp ? 'Processing...' : '+ Rs.500'}</span>
+                <span className="font-semibold text-sm">Top up</span>
               </button>
               
               <button 
@@ -336,6 +396,35 @@ const Dashboard = () => {
                   ))
                 )}
               </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.45 }}
+              className="glass-card mt-8"
+            >
+              <div className="flex items-center gap-2 mb-6">
+                <CreditCard className="text-slate-400 w-5 h-5" />
+                <h3 className="text-lg font-bold outfit">Recent Top-ups</h3>
+              </div>
+              {topups.length === 0 ? (
+                <p className="py-6 text-center text-xs font-bold uppercase tracking-widest text-slate-400">No top-ups yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {topups.slice(0, 5).map((t) => (
+                    <div key={t.id} className="flex items-center justify-between p-4 rounded-sm border border-slate-100">
+                      <div>
+                        <p className="font-semibold text-slate-900">Rs. {t.amount}</p>
+                        <p className="text-[10px] text-slate-400 font-mono mt-1 uppercase">{new Date(t.createdAt).toLocaleString()}</p>
+                      </div>
+                      <span className={`text-[10px] uppercase font-bold tracking-widest ${t.status === 'succeeded' ? 'text-green-600' : t.status === 'pending' ? 'text-rail-blue' : t.status === 'review' ? 'text-amber-600' : t.status === 'failed' ? 'text-rail-red' : 'text-slate-400'}`} title={t.failureReason || ''}>
+                        {t.status === 'review' ? 'Under review' : t.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </motion.div>
 
             <motion.div
