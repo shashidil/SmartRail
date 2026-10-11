@@ -140,13 +140,14 @@ const RfidTerminal = ({ routes, onTapDone }) => {
               <th className="px-6 py-3">From → To</th>
               <th className="px-6 py-3 text-right">Fare</th>
               <th className="px-6 py-3">Started</th>
+              <th className="px-6 py-3">Source</th>
               <th className="px-6 py-3 text-center">Status</th>
               <th className="px-6 py-3 text-right"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {trips.length === 0 ? (
-              <tr><td colSpan="7" className="text-center py-8 text-slate-400">No {tripFilter} trips.</td></tr>
+              <tr><td colSpan="8" className="text-center py-8 text-slate-400">No {tripFilter} trips.</td></tr>
             ) : trips.map((t) => (
               <tr key={t.id}>
                 <td className="px-6 py-3 font-semibold">{t.username} <span className="text-xs text-slate-400 font-mono">#{t.userId}</span></td>
@@ -154,6 +155,7 @@ const RfidTerminal = ({ routes, onTapDone }) => {
                 <td className="px-6 py-3 text-slate-500">{t.startStation} → {t.endStation || '...'}</td>
                 <td className="px-6 py-3 text-right font-mono">Rs. {t.fare}</td>
                 <td className="px-6 py-3 text-xs text-slate-500">{new Date(t.startedAt).toLocaleString()}</td>
+                <td className="px-6 py-3 text-[10px] uppercase font-bold tracking-widest text-slate-400" title="Start / end tap source">{t.startSource}{t.endSource ? ` / ${t.endSource}` : ''}</td>
                 <td className="px-6 py-3 text-center">
                   <span className={`px-2 py-1 rounded-sm text-[10px] uppercase font-bold tracking-widest ${STATUS_STYLE[t.status]}`} title={t.cancelReason || ''}>{t.status}</span>
                 </td>
