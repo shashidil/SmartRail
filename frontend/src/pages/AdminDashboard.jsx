@@ -4,9 +4,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ShieldCheck, Users, Activity, CreditCard, 
   Map, Search, Bell, LogOut, ArrowUpRight, Zap, Edit3, CheckCircle2,
-  UserPlus, KeyRound, Trash2, Ban, RotateCcw, X
+  UserPlus, KeyRound, Trash2, Ban, RotateCcw, X, Menu, WifiOff
 } from 'lucide-react';
-import { api, getStoredUser, clearSession } from '../api';
+import { api, getStoredUser, clearSession, errorMessage } from '../api';
+import { useSessionStatus } from '../components/RequireAuth';
+import useOnlineStatus from '../hooks/useOnlineStatus';
 import RoutesPricing from '../components/admin/RoutesPricing';
 import RfidTerminal from '../components/admin/RfidTerminal';
 import PaymentsPanel from '../components/admin/PaymentsPanel';
@@ -16,6 +18,22 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const [admin, setAdmin] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [navOpen, setNavOpen] = useState(false);
+  const online = useOnlineStatus();
+  const sessionStatus = useSessionStatus();
+  const offline = !online || sessionStatus === 'offline';
+
+  const selectTab = (tab) => {
+    setActiveTab(tab);
+    setNavOpen(false);
+  };
+
+  useEffect(() => {
+    if (!navOpen) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setNavOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navOpen]);
   
   // Data States
   const [passengers, setPassengers] = useState([]);
@@ -32,9 +50,14 @@ const AdminDashboard = () => {
       return;
     }
     setAdmin(parsedUser);
+  }, [navigate]);
+
+  // Admin data is always live: load (and reload after reconnecting) only while online.
+  useEffect(() => {
+    if (offline || !admin) return;
     fetchUsers();
     fetchRoutes();
-  }, [navigate]);
+  }, [offline, admin]);
 
   const fetchUsers = async () => {
     try {
@@ -102,7 +125,7 @@ const AdminDashboard = () => {
       setUserModal(null);
       fetchUsers();
     } catch (err) {
-      setUserModalError(err.response?.data?.message || 'Request failed.');
+      setUserModalError(errorMessage(err, 'Request failed.'));
     } finally {
       setIsSavingUser(false);
     }
@@ -115,7 +138,7 @@ const AdminDashboard = () => {
       await api.put(`/api/users/${user.id}/status`, { status });
       fetchUsers();
     } catch (err) {
-      alert(err.response?.data?.message || `Failed to ${verb.toLowerCase()} user.`);
+      alert(errorMessage(err, `Failed to ${verb.toLowerCase()} user.`));
     }
   };
 
@@ -125,7 +148,7 @@ const AdminDashboard = () => {
       await api.delete(`/api/users/${user.id}`);
       fetchUsers();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to delete user.');
+      alert(errorMessage(err, 'Failed to delete user.'));
     }
   };
 
@@ -139,47 +162,55 @@ const AdminDashboard = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar - Dark Utility */}
-      <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col fixed h-full z-10 transition-transform md:translate-x-0 -translate-x-full">
+      {/* Phones: the sidebar is a drawer opened from the header menu button */}
+      {navOpen && <div className="fixed inset-0 z-30 bg-slate-900/50 md:hidden" onClick={() => setNavOpen(false)} aria-hidden="true" />}
+      <aside
+        id="admin-nav"
+        className={`w-64 bg-slate-900 border-r border-slate-800 flex flex-col fixed inset-y-0 left-0 z-40 pt-safe pl-safe transition-transform md:translate-x-0 ${navOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
         <div className="h-16 flex items-center px-6 border-b border-white/10">
           <ShieldCheck className="text-rail-blue w-6 h-6 mr-2" />
-          <span className="font-outfit font-bold text-lg tracking-tight text-white">SmartRail <span className="text-rail-blue">Control</span></span>
+          <span className="flex-1 font-outfit font-bold text-lg tracking-tight text-white">SmartRail <span className="text-rail-blue">Control</span></span>
+          <button onClick={() => setNavOpen(false)} aria-label="Close menu" className="md:hidden p-2.5 -mr-2.5 text-slate-400 hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
         </div>
         
-        <nav className="flex-1 py-6 px-4 space-y-1">
-          <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'overview' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+        <nav className="flex-1 py-6 px-4 space-y-1 overflow-y-auto">
+          <button onClick={() => selectTab('overview')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'overview' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Activity className="w-5 h-5 mr-3" /> System Overview
           </button>
-          <button onClick={() => setActiveTab('users')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'users' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => selectTab('users')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'users' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Users className="w-5 h-5 mr-3" /> Manage Users
           </button>
-          <button onClick={() => setActiveTab('routes')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'routes' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => selectTab('routes')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'routes' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Map className="w-5 h-5 mr-3" /> Routes & Pricing
           </button>
-          <button onClick={() => setActiveTab('rfid')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'rfid' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => selectTab('rfid')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'rfid' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <CreditCard className="w-5 h-5 mr-3" /> RFID Emulation
           </button>
-          <button onClick={() => setActiveTab('payments')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'payments' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => selectTab('payments')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'payments' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <CreditCard className="w-5 h-5 mr-3" /> Payments
           </button>
-          <button onClick={() => setActiveTab('devices')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'devices' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => selectTab('devices')} className={`w-full flex items-center px-4 py-3 rounded-sm text-sm font-medium transition-colors ${activeTab === 'devices' ? 'bg-rail-blue/10 text-rail-blue' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Zap className="w-5 h-5 mr-3" /> Readers & Cards
           </button>
         </nav>
 
-        <div className="p-4 border-t border-white/10">
+        <div className="p-4 pb-safe border-t border-white/10">
           <div className="flex items-center px-4 py-3">
-            <div className="w-2 h-2 rounded-full bg-green-500 mr-3 animate-pulse"></div>
-            <span className="text-xs font-mono text-slate-400">Server: ONLINE</span>
+            <div className={`w-2 h-2 rounded-full mr-3 ${offline ? 'bg-slate-500' : 'bg-green-500 motion-safe:animate-pulse'}`}></div>
+            <span className="text-xs font-mono text-slate-400">Server: {offline ? 'OFFLINE' : 'ONLINE'}</span>
           </div>
         </div>
       </aside>
 
       {userModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4" onClick={() => setUserModal(null)}>
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-start sm:items-center justify-center p-4 pt-12 sm:pt-4" onClick={() => setUserModal(null)}>
           <form
             onSubmit={handleUserSubmit}
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-lg shadow-2xl border border-slate-200 w-full max-w-sm p-6 space-y-4"
+            className="bg-white rounded-lg shadow-2xl border border-slate-200 w-full max-w-sm p-6 space-y-4 modal-max-h overflow-y-auto"
           >
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-bold outfit text-slate-900">
@@ -187,7 +218,7 @@ const AdminDashboard = () => {
                 {userModal.mode === 'edit' && `Edit ${userModal.user.username}`}
                 {userModal.mode === 'reset' && `Reset password for ${userModal.user.username}`}
               </h2>
-              <button type="button" onClick={() => setUserModal(null)} className="text-slate-400 hover:text-slate-900"><X size={18} /></button>
+              <button type="button" onClick={() => setUserModal(null)} aria-label="Close" className="p-2.5 -m-2.5 text-slate-400 hover:text-slate-900"><X size={18} /></button>
             </div>
             {userModalError && (
               <div className="p-2 bg-red-50 border-l-2 border-red-500 text-red-600 text-xs font-medium">{userModalError}</div>
@@ -240,29 +271,46 @@ const AdminDashboard = () => {
                 <option value="admin">Admin</option>
               </select>
             )}
-            <div className="flex gap-3 justify-end">
-              <button type="button" onClick={() => setUserModal(null)} className="text-sm text-slate-500 hover:text-slate-900 font-medium px-3">Cancel</button>
-              <button type="submit" disabled={isSavingUser} className="btn-primary py-2 px-4 text-sm">{isSavingUser ? 'Saving...' : 'Save'}</button>
+            <div className="flex flex-wrap gap-3 justify-end">
+              <button type="button" onClick={() => setUserModal(null)} className="text-sm text-slate-500 hover:text-slate-900 font-medium px-3 min-h-[44px] sm:min-h-0">Cancel</button>
+              <button type="submit" disabled={isSavingUser || offline} className="btn-primary py-2 px-4 text-sm min-h-[44px] sm:min-h-0">{isSavingUser ? 'Saving...' : 'Save'}</button>
             </div>
           </form>
         </div>
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 md:ml-64 flex flex-col min-h-screen relative">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-0">
-          <div className="flex-1 max-w-md relative">
+      <main className="flex-1 min-w-0 md:ml-64 flex flex-col min-h-screen relative">
+        <header className="bg-white border-b border-slate-200 pt-safe z-0">
+          <div className="h-16 flex items-center justify-between gap-3 px-4 md:px-8">
+          <button
+            onClick={() => setNavOpen(true)}
+            aria-label="Open menu" aria-controls="admin-nav" aria-expanded={navOpen}
+            className="md:hidden p-2.5 -ml-2.5 text-slate-600 hover:text-slate-900"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <span className="sm:hidden flex-1 font-outfit font-bold tracking-tight">SmartRail <span className="text-rail-blue">Control</span></span>
+          <div className="hidden sm:block flex-1 max-w-md relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
             <input type="text" placeholder="Search..." className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-sm text-sm focus:outline-none focus:border-rail-blue transition-all" />
           </div>
           <div className="flex items-center gap-6">
-            <button onClick={handleLogout} className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
+            <button onClick={handleLogout} className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors min-h-[44px]">
                Sign Out <LogOut className="w-4 h-4 ml-1 opacity-50" />
             </button>
           </div>
+          </div>
         </header>
 
-        <div className="p-8 lg:p-12 space-y-8 flex-1 overflow-auto">
+        <div className="p-4 md:p-8 lg:p-12 space-y-8 flex-1 overflow-auto">
+          {offline ? (
+            <div className="glass-card text-center py-12">
+              <WifiOff className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+              <h1 className="text-xl font-bold outfit">Admin tools need a connection</h1>
+              <p className="text-slate-500 text-sm mt-2">You're offline. Admin data is never stored on this device; it will load when you reconnect.</p>
+            </div>
+          ) : (
           <AnimatePresence mode="wait">
             
             {/* OVERVIEW TAB */}
@@ -272,7 +320,7 @@ const AdminDashboard = () => {
                   <h1 className="text-2xl font-bold outfit">System Overview</h1>
                   <p className="text-slate-500 text-sm mt-1">Live metrics from Sri Lanka Railways infrastructure.</p>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
                   <div className="glass-card flex flex-col justify-between">
                     <div className="flex justify-between items-start mb-4">
                       <div className="w-10 h-10 rounded-sm bg-slate-50 flex items-center justify-center text-rail-blue"><Users className="w-5 h-5" /></div>
@@ -311,14 +359,14 @@ const AdminDashboard = () => {
                     <h1 className="text-2xl font-bold outfit">Manage Users</h1>
                     <p className="text-slate-500 text-sm mt-1">Create, edit, deactivate and reset accounts.</p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
                     <input
-                      type="text" placeholder="Search name, username, NIC..." value={userSearch}
+                      type="search" placeholder="Search name, username, NIC..." value={userSearch}
                       onChange={(e) => setUserSearch(e.target.value)}
-                      className="px-3 py-2 bg-white border border-slate-200 rounded-sm text-sm focus:outline-none focus:border-rail-blue"
+                      className="w-full sm:w-auto px-3 py-2 min-h-[44px] sm:min-h-0 bg-white border border-slate-200 rounded-sm text-sm focus:outline-none focus:border-rail-blue"
                     />
-                    <button onClick={fetchUsers} className="btn-primary py-2 px-4 text-xs flex items-center gap-2">Refresh Data</button>
-                    <button onClick={() => openUserModal('create')} className="btn-primary py-2 px-4 text-xs flex items-center gap-2">
+                    <button onClick={fetchUsers} className="btn-primary py-2 px-4 text-xs flex items-center gap-2 min-h-[44px] sm:min-h-0">Refresh Data</button>
+                    <button onClick={() => openUserModal('create')} className="btn-primary py-2 px-4 text-xs flex items-center gap-2 min-h-[44px] sm:min-h-0">
                       <UserPlus size={14} /> Add User
                     </button>
                   </div>
@@ -363,7 +411,7 @@ const AdminDashboard = () => {
                           </td>
                           <td className="px-6 py-4 text-xs text-slate-500">{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ''}</td>
                           <td className="px-6 py-4">
-                            <div className="flex justify-end gap-3 text-slate-400">
+                            <div className="flex justify-end gap-1 text-slate-400 [&>button]:p-2">
                               <button title="Edit" onClick={() => openUserModal('edit', p)} className="hover:text-rail-blue"><Edit3 size={16} /></button>
                               <button title="Reset password" onClick={() => openUserModal('reset', p)} className="hover:text-rail-blue"><KeyRound size={16} /></button>
                               {p.status === 'active' ? (
@@ -395,6 +443,7 @@ const AdminDashboard = () => {
             {activeTab === 'devices' && <CardsDevices key="devices" routes={routes} passengers={passengers} />}
 
           </AnimatePresence>
+          )}
         </div>
       </main>
     </div>

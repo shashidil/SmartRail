@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../api';
+import { api, errorMessage } from '../api';
 
 const PRESETS = [500, 1000, 2000, 5000];
 
@@ -54,17 +54,17 @@ const TopUpModal = ({ onClose }) => {
       // Stays disabled: the browser is leaving for PayHere.
       postToCheckout(res.data.checkout);
     } catch (err) {
-      setError(err.response?.data?.message || 'Could not start the payment. Please try again.');
+      setError(errorMessage(err, 'Could not start the payment. Please try again.'));
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-slate-900/50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] bg-slate-900/50 flex items-start sm:items-center justify-center p-4 pt-12 sm:pt-4" onClick={onClose}>
       <form
         onSubmit={handleSubmit}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-lg shadow-2xl border border-slate-200 w-full max-w-sm p-6 space-y-4"
+        className="bg-white rounded-lg shadow-2xl border border-slate-200 w-full max-w-sm p-6 space-y-4 modal-max-h overflow-y-auto"
       >
         <h2 className="text-lg font-bold outfit text-slate-900">Top up balance</h2>
         <p className="text-xs text-slate-500">You will be taken to PayHere to pay securely. Balance is added once payment is confirmed.</p>
@@ -102,7 +102,7 @@ const TopUpModal = ({ onClose }) => {
           <p className="text-[10px] text-slate-400 mt-1">Minimum Rs. {min}, maximum Rs. {max}.</p>
         </div>
 
-        <div className="flex gap-3 justify-end">
+        <div className="flex flex-wrap gap-3 justify-end">
           <button type="button" onClick={onClose} className="text-sm text-slate-500 hover:text-slate-900 font-medium px-3">Close</button>
           <button type="submit" disabled={isSubmitting || unavailable || !config} className="btn-primary py-2 px-4 text-sm disabled:opacity-50">
             {isSubmitting ? 'Redirecting...' : 'Pay with PayHere'}

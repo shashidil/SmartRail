@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { api } from '../../api';
+import { api, errorMessage } from '../../api';
 
-const errorText = (err, fallback) => err.response?.data?.message || fallback;
+const errorText = errorMessage;
 
 const CardsDevices = ({ routes, passengers }) => {
   const [cards, setCards] = useState([]);
@@ -191,11 +191,12 @@ const CardsDevices = ({ routes, passengers }) => {
         </div>
       </div>
 
-      <div className="glass-card p-0 overflow-x-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+      <div className="glass-card p-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 py-4 border-b border-slate-100">
           <h3 className="font-bold outfit">Rejected taps</h3>
           <button onClick={load} className="text-sm font-medium text-rail-blue hover:underline">Refresh</button>
         </div>
+        <div className="overflow-x-auto">
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold">
             <tr><th className="px-6 py-3">Time</th><th className="px-6 py-3">Reader</th><th className="px-6 py-3">Card UID</th><th className="px-6 py-3">Reason</th><th className="px-6 py-3">HTTP</th></tr>
@@ -214,6 +215,7 @@ const CardsDevices = ({ routes, passengers }) => {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </motion.div>
   );
