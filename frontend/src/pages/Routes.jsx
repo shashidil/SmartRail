@@ -2,7 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TrainTrack, ArrowLeft, MapPin, Radio, WifiOff } from 'lucide-react';
-import { api } from '../api';
+import { api, getStoredUser } from '../api';
+import OfflineBanner from '../components/OfflineBanner';
+import { useSessionStatus } from '../components/RequireAuth';
+import useOnlineStatus from '../hooks/useOnlineStatus';
+import { isOfflineError } from '../lib/network';
+import { loadSnapshot, saveSnapshot } from '../lib/offlineCache';
 
 const POLL_MS = 10000;
 
@@ -19,16 +24,47 @@ const Routes = () => {
   const [trains, setTrains] = useState([]);
   const [loadingTrains, setLoadingTrains] = useState(true);
   const [filter, setFilter] = useState('All');
+  const [savedAt, setSavedAt] = useState(null);
+  const online = useOnlineStatus();
+  const sessionStatus = useSessionStatus();
+  const offline = !online || sessionStatus === 'offline';
+
+  // Only a Passenger's view of Routes and Fares is kept for offline use; Admin data is never cached.
+  const passengerId = () => {
+    const user = getStoredUser();
+    return user?.role === 'user' ? user.id : null;
+  };
+
+  const showSnapshot = () => {
+    const snapshot = loadSnapshot(passengerId());
+    if (snapshot?.routes) {
+      setRoutes(snapshot.routes);
+      setSavedAt(snapshot.savedAt);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
 
+    // Offline: last-known Routes, and no train positions (stale positions must never look live).
+    if (offline) {
+      showSnapshot();
+      setTrains([]);
+      setLoadingTrains(false);
+      return undefined;
+    }
+
     const loadRoutes = async () => {
       try {
         const res = await api.get('/api/routes');
-        if (!cancelled && res.data.success) setRoutes(res.data.routes);
+        if (!cancelled && res.data.success) {
+          setRoutes(res.data.routes);
+          setSavedAt(null);
+          saveSnapshot(passengerId(), 'routes', res.data.routes);
+        }
       } catch (e) {
-        console.error('Failed to fetch routes');
+        if (isOfflineError(e)) showSnapshot();
+        else console.error('Failed to fetch routes');
       }
     };
 
@@ -37,7 +73,7 @@ const Routes = () => {
         const res = await api.get('/api/trains');
         if (!cancelled && res.data.success) setTrains(res.data.trains);
       } catch (e) {
-        console.error('Failed to fetch trains');
+        if (!isOfflineError(e)) console.error('Failed to fetch trains');
       } finally {
         if (!cancelled) setLoadingTrains(false);
       }
@@ -50,25 +86,30 @@ const Routes = () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offline]);
 
   const filteredTrains = filter === 'All' ? trains : trains.filter((t) => t.routeName === filter);
 
   return (
     <div className="min-h-screen bg-slate-50 relative pb-20">
-      <nav className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-50 shadow-sm flex items-center gap-4">
-        <button onClick={() => navigate('/dashboard')} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm pt-safe">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-3 sm:gap-4">
+        <button onClick={() => navigate('/dashboard')} aria-label="Back to dashboard" className="p-2.5 hover:bg-slate-100 rounded-full transition-colors shrink-0">
           <ArrowLeft className="w-5 h-5 text-slate-600" />
         </button>
         <div>
-          <h1 className="font-outfit font-bold text-lg tracking-tight text-slate-900">Routes & Live Network Status</h1>
+          <h1 className="font-outfit font-bold text-base sm:text-lg tracking-tight text-slate-900">Routes & Live Network Status</h1>
           <p className="text-xs text-slate-500 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Sri Lanka Railways
+            <span className={`w-2 h-2 rounded-full ${offline ? 'bg-slate-400' : 'bg-green-500 motion-safe:animate-pulse'}`}></span>
+            {offline ? 'Offline' : 'Sri Lanka Railways'}
           </p>
+        </div>
         </div>
       </nav>
 
       <main className="max-w-5xl mx-auto p-4 md:p-8 mt-4 space-y-10">
+        {offline && <div className="-mb-4"><OfflineBanner savedAt={savedAt} /></div>}
         {/* Routes & Fares (read-only) */}
         <section>
           <h2 className="font-outfit font-bold text-xl text-slate-900 mb-1">Routes & Fares</h2>
@@ -78,9 +119,9 @@ const Routes = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {routes.map((r) => (
-                <div key={r.id} className="bg-white border border-slate-200 rounded-sm p-5 shadow-sm">
+                <div key={r.id} className="bg-white border border-slate-200 rounded-sm p-4 sm:p-5 shadow-sm">
                   <div className="flex justify-between items-start gap-4">
-                    <div>
+                    <div className="min-w-0">
                       <h3 className="font-bold outfit text-lg text-slate-900 flex items-center gap-2">
                         <TrainTrack className="w-4 h-4 text-rail-blue" /> {r.name}
                       </h3>
@@ -108,7 +149,7 @@ const Routes = () => {
         <section>
           <h2 className="font-outfit font-bold text-xl text-slate-900 mb-4">Live Tracking Board</h2>
 
-          {routes.length > 0 && (
+          {routes.length > 0 && !offline && (
             <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide">
               {['All', ...routes.map((r) => r.name)].map((line) => (
                 <button
@@ -124,8 +165,14 @@ const Routes = () => {
             </div>
           )}
 
-          {loadingTrains ? (
-            <div className="py-12 text-center text-slate-400 animate-pulse font-bold uppercase tracking-widest text-xs">Loading trains...</div>
+          {offline ? (
+            <div className="bg-white border border-slate-200 rounded-sm p-10 text-center">
+              <WifiOff className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Offline, positions unavailable</p>
+              <p className="text-sm text-slate-400 mt-1">Live train positions will appear when you reconnect.</p>
+            </div>
+          ) : loadingTrains ? (
+            <div className="py-12 text-center text-slate-400 motion-safe:animate-pulse font-bold uppercase tracking-widest text-xs">Loading trains...</div>
           ) : filteredTrains.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-sm p-10 text-center">
               <Radio className="w-10 h-10 mx-auto mb-3 text-slate-300" />
@@ -142,11 +189,11 @@ const Routes = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className="bg-white border border-slate-200 rounded-sm p-5 shadow-sm"
+                    className="bg-white border border-slate-200 rounded-sm p-4 sm:p-5 shadow-sm"
                   >
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                       <div>
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
                           {train.routeName && (
                             <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] uppercase font-bold tracking-wider rounded-sm">{train.routeName}</span>
                           )}
@@ -159,7 +206,7 @@ const Routes = () => {
                         {STATUS_LABEL[train.status]}
                       </span>
                     </div>
-                    <div className="mt-4 flex flex-wrap gap-x-8 gap-y-2 text-xs text-slate-500 font-mono">
+                    <div className="mt-4 flex flex-wrap gap-x-6 sm:gap-x-8 gap-y-2 text-xs text-slate-500 font-mono">
                       <span className="flex items-center gap-1">
                         <MapPin className="w-3 h-3" /> {Number(train.latitude).toFixed(4)}, {Number(train.longitude).toFixed(4)}
                         {train.status === 'no_signal' && ' (last known)'}

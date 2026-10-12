@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import RoutesPage from './pages/Routes';
 import RequireAuth from './components/RequireAuth';
+import UpdatePrompt from './components/UpdatePrompt';
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route path="/routes" element={<RequireAuth><RoutesPage /></RequireAuth>} />
         <Route path="/" element={<Navigate to="/login" replace />} />
       </Routes>
+      <UpdatePrompt />
     </div>
   );
 }

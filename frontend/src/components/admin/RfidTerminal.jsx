@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Zap, Ban } from 'lucide-react';
-import { api } from '../../api';
+import { api, errorMessage } from '../../api';
 
 const STATUS_STYLE = {
   open: 'bg-blue-50 text-blue-700',
@@ -51,7 +51,7 @@ const RfidTerminal = ({ routes, onTapDone }) => {
       onTapDone();
       loadTrips();
     } catch (err) {
-      setStatus({ type: 'error', msg: err.response?.data?.message || 'Error processing RFID tap' });
+      setStatus({ type: 'error', msg: errorMessage(err, 'Error processing RFID tap') });
     }
   };
 
@@ -62,7 +62,7 @@ const RfidTerminal = ({ routes, onTapDone }) => {
       await api.put(`/api/trips/${trip.id}/cancel`, { reason });
       loadTrips();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to cancel trip.');
+      alert(errorMessage(err, 'Failed to cancel trip.'));
     }
   };
 
@@ -91,7 +91,7 @@ const RfidTerminal = ({ routes, onTapDone }) => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Passenger ID (Integer)</label>
-              <input type="number" required placeholder="e.g. 1" className="input-field" value={form.userId} onChange={(e) => setForm({ ...form, userId: e.target.value })} />
+              <input type="number" inputMode="numeric" required placeholder="e.g. 1" className="input-field" value={form.userId} onChange={(e) => setForm({ ...form, userId: e.target.value })} />
             </div>
             <div>
               <label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Tap type</label>
@@ -123,8 +123,8 @@ const RfidTerminal = ({ routes, onTapDone }) => {
         </form>
       </div>
 
-      <div className="glass-card p-0 overflow-x-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+      <div className="glass-card p-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 py-4 border-b border-slate-100">
           <h3 className="font-bold outfit">Trips</h3>
           <select className="px-3 py-1.5 bg-white border border-slate-200 rounded-sm text-sm" value={tripFilter} onChange={(e) => setTripFilter(e.target.value)}>
             <option value="open">Open</option>
@@ -132,6 +132,7 @@ const RfidTerminal = ({ routes, onTapDone }) => {
             <option value="cancelled">Cancelled</option>
           </select>
         </div>
+        <div className="overflow-x-auto">
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold">
             <tr>
@@ -168,6 +169,7 @@ const RfidTerminal = ({ routes, onTapDone }) => {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </motion.div>
   );

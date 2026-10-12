@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { api } from '../../api';
+import { api, errorMessage } from '../../api';
 
 const STATUS_STYLE = {
   pending: 'bg-blue-50 text-blue-700',
@@ -25,7 +25,7 @@ const PaymentsPanel = ({ passengers }) => {
         setError('');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load top-ups.');
+      setError(errorMessage(err, 'Failed to load top-ups.'));
     }
   };
 
@@ -41,7 +41,7 @@ const PaymentsPanel = ({ passengers }) => {
         <p className="text-slate-500 text-sm mt-1">PayHere top-up attempts. "Review" means money was taken but not credited and needs attention.</p>
       </div>
 
-      <div className="glass-card p-0 overflow-x-auto">
+      <div className="glass-card p-0">
         <div className="flex flex-wrap items-center gap-3 px-6 py-4 border-b border-slate-100">
           <select className="px-3 py-1.5 bg-white border border-slate-200 rounded-sm text-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">All statuses</option>
@@ -54,6 +54,7 @@ const PaymentsPanel = ({ passengers }) => {
           <button onClick={load} className="text-sm font-medium text-rail-blue hover:underline">Refresh</button>
         </div>
         {error && <div className="px-6 py-3 text-sm text-red-600">{error}</div>}
+        <div className="overflow-x-auto">
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold">
             <tr>
@@ -84,6 +85,7 @@ const PaymentsPanel = ({ passengers }) => {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </motion.div>
   );
