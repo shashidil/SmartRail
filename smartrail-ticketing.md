@@ -7,7 +7,7 @@ SmartRail is a premium, PWA-certified smart card ticketing system for Sri Lanka 
 - **Tech Stack:** React (Vite) + Node.js (ESM) + Tailwind CSS + Framer Motion.
 - **Persistence:** PostgreSQL (`DATABASE_URL` in `backend/.env`); balance changes and ledger entries are written atomically.
 - **Auth:** JWT (`JWT_SECRET` in `backend/.env`), bcrypt passwords, `Authorization: Bearer` on all API calls.
-- **PWA Ready:** Manifest and icons configured for "Home Screen" installation.
+- **PWA:** Installable on Android, iOS and desktop (generated manifest, maskable/Apple icons, service worker). The app shell works offline, Passengers see their last-known Balance and Transactions offline, and installed copies are prompted to update.
 - **Hardware Bridge:** Dedicated RFID Tap API ready for Arduino/NodeMCU integration.
 
 ## ✅ Current System Capabilities
@@ -19,7 +19,7 @@ SmartRail is a premium, PWA-certified smart card ticketing system for Sri Lanka 
 - [x] **Admin Tooling:** Route and fixed-fare management, trip-based RFID simulation, and full user management (create, edit, deactivate, reset password, delete).
 - [x] **Secure Auth:** bcrypt-hashed passwords, JWT sessions with expiry and revocation, role-enforced API, login throttling.
 - [x] **Transaction Ledger:** Automated receipt generation for every top-up and tap.
-- [x] **UX Excellence:** 3D animated login, responsive layouts, and strict "Maestro" design (No-Purple).
+- [x] **UX Excellence:** 3D animated login, responsive layouts down to 320px (Admin drawer navigation on phones), reduced-motion support, and strict "Maestro" design (No-Purple).
 
 ## 📊 Database Schema (SLR Official KM)
 | Line Name | Origin-Destination (KM) | Distance |
@@ -36,7 +36,7 @@ SmartRail is a premium, PWA-certified smart card ticketing system for Sri Lanka 
 
 ## 📅 Maintenance & Roadmap
 - [x] **Phase 1-4:** Foundation, Design System, Auth, and Dashboards (DONE).
-- [x] **Phase 5:** Database Persistence & PWA Conversion (DONE).
+- [x] **Phase 5:** Database Persistence & PWA Conversion (DONE; installability, offline viewing and mobile layouts completed in `_specs/2610120256_pwa-and-mobile-support.md`).
 - [ ] **Phase 6:** Physical Arduino/ESP32 Hardware Connection. Software path DONE: PayHere top-ups, device-key authenticated `POST /api/device/tap`, card/device registry in the Admin dashboard. Remaining: reader firmware and provisioning.
 - [ ] **Phase 7:** Passenger Mobile App (Native Shell).
 

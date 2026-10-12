@@ -19,8 +19,9 @@ Frontend:
 ```bash
 cd frontend && npm install
 npm run dev      # Vite dev server
-npm run build    # production build to frontend/dist
-npm run preview
+npm run build    # production build to frontend/dist (also emits the service worker)
+npm run preview  # serves the build on :4173; use this, not dev, to exercise PWA/offline behaviour
+npm run generate-pwa-assets  # regenerate icons + favicon in public/ from public/logo.svg
 ```
 `npm run lint` is defined, but ESLint isn't installed as a dependency and there's no ESLint config, so it won't run until both are added.
 
@@ -43,7 +44,11 @@ Data shapes: users have `{id, username, role: 'user'|'admin', balance, status: '
 - Session state is `localStorage` keys `user` (JSON) and `token`. `components/RequireAuth.jsx` wraps `/dashboard` (role `user`), `/admin` (role `admin`) and `/routes`; it confirms the session with `GET /api/me` before rendering, so editing `localStorage` doesn't grant access. After a top-up, `Dashboard` writes the new balance back into the `user` object.
 - `Routes.jsx` is the passenger view: read-only routes and fares from `/api/routes`, plus the live tracking board polled from `/api/trains` (empty "Awaiting GPS" state until a position is posted). Admin Routes & Pricing and the RFID terminal live in `components/admin/`.
 
-**Styling.** Tailwind with a custom `rail` palette (`rail-blue`, `rail-red`, `rail-dark`, `rail-muted`), `outfit`/`inter` font families, and tightened border radii, all set in `frontend/tailwind.config.js`. Animations use Framer Motion, and icons come from lucide-react. The project's design notes (`smartrail-ticketing.md`) call for a strict "no purple" palette. PWA metadata is in `frontend/public/manifest.json`.
+**PWA and offline.** `vite-plugin-pwa` (configured in `frontend/vite.config.js`) generates the manifest and a Workbox service worker that precaches the app shell (not `edit.mp4`) and serves `index.html` for every in-app route. It is registered from `components/UpdatePrompt.jsx` in prompt mode: a new deploy shows a "new version" toast, and a waiting version otherwise applies on the next launch. `npm run dev` has no service worker. API responses are never cached by the service worker. Instead, `lib/offlineCache.js` keeps a per-Passenger `localStorage` snapshot (`offline:<userId>`: history, trips, top-ups, routes and `savedAt`; no contact details, no train positions, nothing for Admins). Offline views read it and label it "last updated". `clearSession()` removes all snapshots, and a new sign-in removes other users' snapshots. `lib/network.js` + `hooks/useOnlineStatus.js` track connectivity (a request with no response also counts as offline). The `api.js` request interceptor rejects every non-GET while offline (`code: 'OFFLINE'`; show it with `errorMessage(err, fallback)`), so nothing is queued. Offline, `RequireAuth` renders with the stored user and status `'offline'` (read with `useSessionStatus()`), then re-checks `/api/me` on reconnect. Admin pages show a "needs a connection" panel offline. `components/InstallPrompt.jsx` offers installation on Login and the Passenger dashboard (iOS gets Add to Home Screen steps). Testing on a phone needs HTTPS: build with `VITE_API_URL` pointing at a tunnelled backend, run `npm run preview -- --host` behind an HTTPS tunnel (e.g. ngrok), and set `FRONTEND_URL` to that origin so PayHere returns to the app. On iOS the PayHere return often opens in Safari rather than the installed app. The Balance is still correct the next time the app opens.
+
+**Mobile layout.** Pages must work from 320px wide. The Admin sidebar is a drawer below `md` (header menu button). Wide tables scroll inside their own `overflow-x-auto` wrapper. Dialogs use `modal-max-h overflow-y-auto` and top-align on phones. Safe-area utilities (`pt-safe`, `pb-safe`, `pl-safe`, `pr-safe`) live in `index.css`. Framer Motion respects reduced motion via `MotionConfig` in `main.jsx`.
+
+**Styling.** Tailwind with a custom `rail` palette (`rail-blue`, `rail-red`, `rail-dark`, `rail-muted`), `outfit`/`inter` font families, and tightened border radii, all set in `frontend/tailwind.config.js`. Animations use Framer Motion, and icons come from lucide-react. The project's design notes (`smartrail-ticketing.md`) call for a strict "no purple" palette. PWA manifest and service-worker settings are in `frontend/vite.config.js`. Icons are generated from `frontend/public/logo.svg` (`frontend/pwa-assets.config.js`).
 
 ## Project notes
 

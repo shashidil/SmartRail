@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Map, Plus, Edit3, X, ArrowUp, ArrowDown, History, Power } from 'lucide-react';
-import { api } from '../../api';
+import { api, errorMessage } from '../../api';
 
 const emptyForm = { name: '', fare: '', stations: ['', ''], status: 'active' };
 
@@ -78,7 +78,7 @@ const RoutesPricing = ({ routes, onReload }) => {
       onReload();
       if (showHistory) loadHistory();
     } catch (err) {
-      setError(err.response?.data?.message || 'Could not save the Route.');
+      setError(errorMessage(err, 'Could not save the Route.'));
       if (err.response?.status === 409) onReload();
     } finally {
       setSaving(false);
@@ -94,7 +94,7 @@ const RoutesPricing = ({ routes, onReload }) => {
       onReload();
       if (showHistory) loadHistory();
     } catch (err) {
-      alert(err.response?.data?.message || `Failed to ${verb.toLowerCase()} Route.`);
+      alert(errorMessage(err, `Failed to ${verb.toLowerCase()} Route.`));
       onReload();
     }
   };
@@ -169,8 +169,8 @@ const RoutesPricing = ({ routes, onReload }) => {
       </div>
 
       {modal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4" onClick={() => setModal(null)}>
-          <form onSubmit={handleSave} onClick={(e) => e.stopPropagation()} className="bg-white rounded-lg shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-start sm:items-center justify-center p-4 pt-12 sm:pt-4" onClick={() => setModal(null)}>
+          <form onSubmit={handleSave} onClick={(e) => e.stopPropagation()} className="bg-white rounded-lg shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4 modal-max-h overflow-y-auto">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-bold outfit text-slate-900">{modal.route ? `Edit ${modal.route.name}` : 'New Route'}</h2>
               <button type="button" onClick={() => setModal(null)} className="text-slate-400 hover:text-slate-900"><X size={18} /></button>
@@ -183,7 +183,7 @@ const RoutesPricing = ({ routes, onReload }) => {
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1 block">Fixed trip Fare (Rs)</label>
-              <input type="number" required min="0" step="0.01" className="input-field py-2.5 text-sm" value={form.fare} onChange={(e) => setForm({ ...form, fare: e.target.value })} />
+              <input type="number" inputMode="decimal" required min="0" step="0.01" className="input-field py-2.5 text-sm" value={form.fare} onChange={(e) => setForm({ ...form, fare: e.target.value })} />
             </div>
 
             <div>
@@ -204,7 +204,7 @@ const RoutesPricing = ({ routes, onReload }) => {
               </button>
             </div>
 
-            <div className="flex gap-3 justify-end">
+            <div className="flex flex-wrap gap-3 justify-end">
               <button type="button" onClick={() => setModal(null)} className="text-sm text-slate-500 hover:text-slate-900 font-medium px-3">Cancel</button>
               <button type="submit" disabled={saving} className="btn-primary py-2 px-4 text-sm">{saving ? 'Saving...' : 'Save'}</button>
             </div>

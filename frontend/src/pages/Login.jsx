@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Train, Shield, User, ArrowRight, Loader2, ArrowLeft } from 'lucide-react';
-import { api, setSession, clearSession, takeAuthMessage } from '../api';
+import { Train, Shield, User, ArrowRight, Loader2, ArrowLeft, WifiOff } from 'lucide-react';
+import { api, setSession, clearSession, takeAuthMessage, errorMessage } from '../api';
+import InstallPrompt from '../components/InstallPrompt';
+import useOnlineStatus from '../hooks/useOnlineStatus';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -12,6 +14,7 @@ const Login = () => {
   const [error, setError] = useState(() => takeAuthMessage());
   const [credentials, setCredentials] = useState({ username: '', password: '' });
   const [profile, setProfile] = useState({ fullName: '', phone: '', nic: '', email: '' });
+  const online = useOnlineStatus();
 
   const handleFlip = () => {
     setIsFlipped(!isFlipped);
@@ -48,18 +51,24 @@ const Login = () => {
         }
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Server connection failed.');
+      setError(errorMessage(err, 'Server connection failed.'));
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-[100dvh] w-full bg-slate-100 flex items-center justify-center p-4 antialiased overflow-hidden">
-      
+    <div className="min-h-[100dvh] w-full bg-slate-100 flex flex-col items-center justify-center gap-4 p-4 pt-safe pb-safe antialiased overflow-x-hidden">
+
+      {!online && (
+        <div role="status" className="w-full max-w-[420px] p-3 border-l-2 border-amber-500 bg-amber-50 text-amber-800 text-sm font-medium flex items-center gap-2">
+          <WifiOff className="w-4 h-4 shrink-0" /> You're offline. Connect to the internet to log in.
+        </div>
+      )}
+
       {/* 3D Perspective Container */}
-      <div className="relative w-full max-w-[420px] aspect-[4/5] max-h-[600px]" style={{ perspective: '1200px' }}>
-        
+      <div className="relative w-full max-w-[420px] h-[calc(100dvh-7rem)] min-h-[460px] max-h-[600px] sm:h-auto sm:min-h-0 sm:aspect-[4/5]" style={{ perspective: '1200px' }}>
+
         <motion.div
           className="w-full h-full relative"
           initial={false}
@@ -67,19 +76,19 @@ const Login = () => {
           transition={{ duration: 0.8, type: "spring", stiffness: 60, damping: 15 }}
           style={{ transformStyle: 'preserve-3d' }}
         >
-          
+
           {/* FRONT FACE: Passenger Login */}
           <div 
-            className="absolute inset-0 w-full h-full bg-white shadow-2xl border border-slate-200 rounded-lg flex flex-col pt-8 pb-6 px-8"
+            className="absolute inset-0 w-full h-full bg-white shadow-2xl border border-slate-200 rounded-lg flex flex-col pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8"
             style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
           >
-            <div className="flex-1 flex flex-col justify-center overflow-y-auto">
+            <div className="flex-1 min-h-0 flex flex-col overflow-y-auto -mx-2 px-2 [&>*:first-child]:mt-auto [&>*:last-child]:mb-auto">
               <div className="flex items-center gap-2 mb-6 text-rail-blue mx-auto">
                 <Train className="w-8 h-8" />
                 <h1 className="text-xl font-bold outfit tracking-tight text-slate-900">SmartRail</h1>
               </div>
 
-              <div className="text-center mb-8">
+              <div className="text-center mb-6 sm:mb-8">
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] uppercase font-bold tracking-widest">
                   <User size={12} /> Passenger
                 </span>
@@ -143,7 +152,7 @@ const Login = () => {
                   required disabled={isLoading}
                   onChange={(e) => setCredentials({...credentials, password: e.target.value})}
                 />
-                <button type="submit" disabled={isLoading} className="w-full btn-primary py-2.5 flex justify-center items-center">
+                <button type="submit" disabled={isLoading || !online} className="w-full btn-primary py-2.5 min-h-[44px] flex justify-center items-center">
                   {isLoading ? <Loader2 size={18} className="animate-spin" /> : (isRegistering ? 'Register Now' : 'Log In')}
                 </button>
               </form>
@@ -152,15 +161,15 @@ const Login = () => {
                 <button 
                   type="button" 
                   onClick={() => setIsRegistering(!isRegistering)}
-                  className="text-xs text-rail-blue font-medium hover:underline"
+                  className="text-xs text-rail-blue font-medium hover:underline py-2"
                 >
                   {isRegistering ? 'Already have an account? Log in' : "Don't have a Smart Card? Register"}
                 </button>
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-slate-100 flex justify-center">
-              <button onClick={handleFlip} type="button" className="text-xs text-slate-500 hover:text-rail-blue font-medium flex items-center gap-1 transition-colors">
+            <div className="mt-4 sm:mt-6 pt-2 sm:pt-4 border-t border-slate-100 flex justify-center">
+              <button onClick={handleFlip} type="button" className="text-xs text-slate-500 hover:text-rail-blue font-medium flex items-center gap-1 transition-colors py-2">
                 Switch to Admin Login <ArrowRight size={14} />
               </button>
             </div>
@@ -169,16 +178,16 @@ const Login = () => {
 
           {/* BACK FACE: Admin Login */}
           <div 
-            className="absolute inset-0 w-full h-full bg-slate-900 shadow-2xl border border-slate-700 rounded-lg flex flex-col pt-8 pb-6 px-8 text-white"
+            className="absolute inset-0 w-full h-full bg-slate-900 shadow-2xl border border-slate-700 rounded-lg flex flex-col pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8 text-white"
             style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
           >
-            <div className="flex-1 flex flex-col justify-center">
+            <div className="flex-1 min-h-0 flex flex-col overflow-y-auto -mx-2 px-2 [&>*:first-child]:mt-auto [&>*:last-child]:mb-auto">
               <div className="flex items-center gap-2 mb-6 text-rail-blue mx-auto">
                 <Shield className="w-8 h-8" />
                 <h1 className="text-xl font-bold outfit tracking-tight">System Control</h1>
               </div>
 
-              <div className="text-center mb-8">
+              <div className="text-center mb-6 sm:mb-8">
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-rail-blue/20 text-rail-blue rounded-full text-[10px] uppercase font-bold tracking-widest">
                   <Shield size={12} /> Administrator
                 </span>
@@ -206,14 +215,14 @@ const Login = () => {
                   required disabled={isLoading}
                   onChange={(e) => setCredentials({...credentials, password: e.target.value})}
                 />
-                <button type="submit" disabled={isLoading} className="w-full bg-slate-100 text-slate-900 font-bold hover:bg-white py-2.5 rounded-sm flex justify-center items-center transition-colors">
+                <button type="submit" disabled={isLoading || !online} className="w-full bg-slate-100 text-slate-900 font-bold hover:bg-white py-2.5 min-h-[44px] rounded-sm flex justify-center items-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                   {isLoading ? <Loader2 size={18} className="animate-spin" /> : 'Authenticate'}
                 </button>
               </form>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-slate-800 flex justify-center">
-              <button onClick={handleFlip} type="button" className="text-xs text-slate-400 hover:text-white font-medium flex items-center gap-1 transition-colors">
+            <div className="mt-4 sm:mt-6 pt-2 sm:pt-4 border-t border-slate-800 flex justify-center">
+              <button onClick={handleFlip} type="button" className="text-xs text-slate-400 hover:text-white font-medium flex items-center gap-1 transition-colors py-2">
                 <ArrowLeft size={14} /> Back to Passenger Login
               </button>
             </div>
@@ -222,6 +231,7 @@ const Login = () => {
         </motion.div>
       </div>
 
+      <InstallPrompt className="w-full max-w-[420px]" />
     </div>
   );
 };
