@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// Empty means same origin: the Vite dev/preview server proxies /api to the backend.
+const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 export const api = axios.create({ baseURL: BASE_URL });
 
